@@ -56,4 +56,6 @@ export async function tx<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> 
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const isUuid = (v: unknown): v is string => typeof v === 'string' && UUID_RE.test(v);
+// Returns a plain boolean rather than a type guard: a string that fails the
+// test is still a string (a slug, say), not `never`.
+export const isUuid = (v: unknown): boolean => typeof v === 'string' && UUID_RE.test(v);
