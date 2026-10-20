@@ -1,11 +1,11 @@
-modules = ["nodejs-22"]
+modules = ["nodejs-20", "web"]
 
 # The Run button: install packages, update the database, then start the API
 # (port 8080) and the website with live reload (port 5000, shown in the preview).
 run = "npm run replit:dev"
 
 [nix]
-channel = "stable-24_05"
+channel = "stable-25_05"
 
 [deployment]
 deploymentTarget = "autoscale"
