@@ -69,7 +69,7 @@ export function formatPassRate(rate: number | null | undefined): string {
   return `${Math.round(rate * 100)}%`;
 }
 
-/** A test script's standard reference, e.g. project 1, test script 2 → "1.2". */
+/** A test area's standard reference, e.g. project 1, test area 2 → "1.2". */
 export function scriptRef(projectNumber: number, scriptNumber: number): string {
   return `${projectNumber}.${scriptNumber}`;
 }

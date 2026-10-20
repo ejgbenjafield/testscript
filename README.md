@@ -21,7 +21,7 @@ On Replit everything runs in one app: Replit's PostgreSQL holds the data, Replit
 4. **Press Run.** The first run installs packages (a minute or two), creates the database tables, then starts the API on port 8080 and the website on port 5000, which shows in the preview.
 5. **Sign in** with any email (development sign-in, no password). Create an organisation, a project, a suite and some test cases, then start a run.
 
-To try invitations: invite someone from **Members and settings**, copy the link (email isn't sent until SendGrid is set up), open it in a private window and sign in with the invited address.
+To try invitations: invite someone from **Members**, copy the link (email isn't sent until SendGrid is set up), open it in a private window and sign in with the invited address.
 
 ## Publish it
 
@@ -99,7 +99,7 @@ The API suite (`api/test/api.test.ts`) covers sign-in, organisations, invitation
 | 1 | Monorepo `/frontend`, `/api`, `/shared` | npm workspaces |
 | 2 | Schema + migrations (`node-postgres` + `db-migrate`) | `api/migrations/`, run by `api/scripts/migrate.js` (the full spec schema, so later phases add rather than restructure) |
 | 3 | Auth0 (email/password + Google) | `api/src/middleware/auth.ts`, `frontend/src/auth/` |
-| 4 | Multi-tenant orgs + members | `api/src/routes/orgs.ts`, Members and settings page |
+| 4 | Multi-tenant orgs + members | `api/src/routes/orgs.ts`, Members and Settings pages |
 | 5 | CRUD: projects, suites, test cases, steps | `api/src/routes/content.ts`, Project and Suite pages (inline edit, drag-and-drop reorder) |
 | 6 | Test runs + result recording | `api/src/routes/runs.ts`, Run page |
 | 7 | Dashboard + results history | `api/src/routes/dashboard.ts`, Dashboard page, suite **Run history** tab |
@@ -108,8 +108,9 @@ The API suite (`api/test/api.test.ts`) covers sign-in, organisations, invitation
 
 ## Design decisions and changes from the spec
 
-- **Test scripts and reference numbers.** What the spec calls a *suite* is shown as a **test script** everywhere on the website (the code and API still say `suite`). Projects are numbered 1, 2, 3 within an organisation and test scripts 1.1, 1.2 within their project. Numbers are assigned automatically and never reused, so a reference always points at the same test script.
-- **Running part of a test script.** A run can include every test case, or just the ones you tick (or a single one, from its **Run** button).
+- **Test areas and reference numbers.** What the spec calls a *suite* is shown as a **test area** on the website (the code and API still say `suite`). Its name is picked from the organisation's list of areas, which admins maintain under **Settings**; an area can be used in many projects but once per project, and renaming it renames it everywhere. Projects are numbered 1, 2, 3 within an organisation and test areas 1.1, 1.2 within their project. Numbers are assigned automatically and never reused.
+- **Running part of a test area.** A run can include every test case, or just the ones you tick (or a single one, from its **Run** button).
+- **Members and Settings.** **Members** is a grid of everyone in the organisation and everyone invited, with roles and actions. **Settings** (admins only) holds organisation-wide options: the area list and the organisation's name and address.
 - **Replit instead of Google Cloud.** Replit PostgreSQL replaces Cloud SQL, Replit Object Storage (backed by Google Cloud Storage) replaces the GCS bucket, Replit Secrets replaces Secret Manager, and Replit Autoscale replaces Cloud Run. One server serves the website and the API, so there's no CORS to configure.
 - **Tenant isolation.** `org_id` is on every content table, and composite foreign keys (`(suite_id, org_id) → suites(id, org_id)`) make cross-organisation references impossible in the database itself. Every route finds the organisation that owns what it touches and checks the caller's role there (`api/src/authz.ts`). Non-members get **404**, not 403, so other tenants' ids can't be probed.
 - **Roles.** The five spec roles are enforced at organisation level (viewer < tester < manager < admin < owner). Team-scoped roles arrive with Phase 2; the `teams` and `team_members` tables and `projects.team_id` already exist. An organisation always keeps at least one owner.
@@ -135,6 +136,7 @@ GET    /orgs/:orgId/members                   PATCH/DELETE /orgs/:orgId/members/
 POST   /orgs/:orgId/members/invite            GET /orgs/:orgId/invitations   DELETE /orgs/:orgId/invitations/:id
 GET    /invitations/:token                    POST /invitations/:token/accept
 GET    /orgs/:orgId/dashboard                 GET /orgs/:orgId/search?q=
+GET/POST /orgs/:orgId/areas                   PATCH /orgs/:orgId/areas/:areaId  {name?, archived?}
 GET/POST         /orgs/:orgId/projects        GET/PATCH/DELETE /orgs/:orgId/projects/:projectId
 GET/POST         /projects/:projectId/suites  GET/PATCH/DELETE /suites/:suiteId
 GET/POST         /suites/:suiteId/test-cases  POST /suites/:suiteId/test-cases/reorder

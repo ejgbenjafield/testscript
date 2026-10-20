@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Page, Project, Suite } from '@testscript/shared';
 import { api } from '../lib/api';
-import { keys, useCan, useOrg } from '../lib/queries';
+import { keys, useAreas, useCan, useOrg } from '../lib/queries';
 import { plural, timeAgo } from '../lib/format';
 import { ConfirmButton, EmptyState, ErrorNote, InlineEdit, Loading, Modal, toast } from '../components/ui';
 import { ResultStrip, RunStatusBadge } from '../components/results';
@@ -66,7 +66,7 @@ export function ProjectPage() {
               label="Delete project"
               className="btn-danger"
               title={`Delete ${p.name}?`}
-              body="Its test scripts and test cases will be removed from view. Past runs and their results are kept."
+              body="Its test areas and test cases will be removed from view. Past runs and their results are kept."
               confirmLabel="Delete project"
               onConfirm={async () => {
                 await api.delete(`/orgs/${org.id}/projects/${p.id}`);
@@ -75,13 +75,13 @@ export function ProjectPage() {
                 navigate(`/${org.slug}/dashboard`);
               }}
             />
-            <button className="btn-primary" onClick={() => setCreating(true)}>New test script</button>
+            <button className="btn-primary" onClick={() => setCreating(true)}>New test area</button>
           </div>
         )}
       </div>
 
       <section className="mt-8">
-        <h2 className="text-lg font-semibold">Test scripts</h2>
+        <h2 className="text-lg font-semibold">Test areas</h2>
         {suites.isPending ? (
           <Loading />
         ) : suites.isError ? (
@@ -89,10 +89,10 @@ export function ProjectPage() {
         ) : suites.data.data.length === 0 ? (
           <div className="mt-3">
             <EmptyState
-              title="No test scripts yet"
-              action={canEdit && <button className="btn-primary" onClick={() => setCreating(true)}>Create a test script</button>}
+              title="No test areas yet"
+              action={canEdit && <button className="btn-primary" onClick={() => setCreating(true)}>Create a test area</button>}
             >
-              A test script is a set of test cases you run together, such as “Checkout” or “Release smoke test”.
+              A test area holds the test cases for one part of the product, such as Payroll or Onboarding. You pick it from the list of areas your admin maintains.
             </EmptyState>
           </div>
         ) : (
@@ -134,16 +134,24 @@ export function ProjectPage() {
 
 function NewSuiteModal({ projectId, open, onClose }: { projectId: string; open: boolean; onClose: () => void }) {
   const org = useOrg();
+  const isAdmin = useCan('editOrg');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [name, setName] = useState('');
+  const [areaId, setAreaId] = useState('');
   const [description, setDescription] = useState('');
+  const areas = useAreas(open);
+  const suites = queryClient.getQueryData<Page<Suite>>(keys.suites(projectId));
+  // Each area can be used once per project, so leave out the ones already here.
+  const used = new Set(suites?.data.map((s) => s.areaId) ?? []);
+  const available = (areas.data?.data ?? []).filter((a) => !used.has(a.id));
+
   const create = useMutation({
-    mutationFn: () => api.post<Suite>(`/projects/${projectId}/suites`, { name, description: description || null }),
+    mutationFn: () => api.post<Suite>(`/projects/${projectId}/suites`, { areaId, description: description || null }),
     onSuccess: (s) => {
       queryClient.invalidateQueries({ queryKey: keys.suites(projectId) });
       queryClient.invalidateQueries({ queryKey: keys.dashboard(org.id) });
-      setName('');
+      queryClient.invalidateQueries({ queryKey: keys.areas(org.id) });
+      setAreaId('');
       setDescription('');
       onClose();
       navigate(`/${org.slug}/suites/${s.id}`);
@@ -153,18 +161,36 @@ function NewSuiteModal({ projectId, open, onClose }: { projectId: string; open: 
     <Modal
       open={open}
       onClose={onClose}
-      title="New test script"
+      title="New test area"
       footer={
         <>
           <button className="btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" form="new-suite" disabled={create.isPending || !name.trim()}>Create test script</button>
+          <button className="btn-primary" form="new-suite" disabled={create.isPending || !areaId}>Create test area</button>
         </>
       }
     >
       <form id="new-suite" className="space-y-4" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
         <div>
-          <label className="label" htmlFor="suite-name">Name</label>
-          <input id="suite-name" className="field" autoFocus required value={name} placeholder="Checkout" onChange={(e) => setName(e.target.value)} />
+          <label className="label" htmlFor="suite-area">Area</label>
+          {areas.isPending ? (
+            <Loading />
+          ) : available.length === 0 ? (
+            <p className="rounded-md bg-canvas px-3 py-2 text-sm text-ink-soft">
+              {(areas.data?.data.length ?? 0) === 0 ? 'There are no areas to choose from yet. ' : 'Every area is already used in this project. '}
+              {isAdmin ? (
+                <Link className="link" to={`/${org.slug}/settings`} onClick={onClose}>Add areas in Settings</Link>
+              ) : (
+                'Ask an admin to add one in Settings.'
+              )}
+            </p>
+          ) : (
+            <select id="suite-area" className="field" required autoFocus value={areaId} onChange={(e) => setAreaId(e.target.value)}>
+              <option value="" disabled>Choose an area</option>
+              {available.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          )}
         </div>
         <div>
           <label className="label" htmlFor="suite-desc">Description (optional)</label>

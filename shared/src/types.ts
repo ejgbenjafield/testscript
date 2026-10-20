@@ -94,10 +94,12 @@ export interface Suite {
   id: string;
   projectId: string;
   projectName?: string;
-  /** The test script's number within its project: the "2" in 1.2. */
+  /** The area this test area belongs to; `name` is that area's name. */
+  areaId: string;
+  /** The test area's number within its project: the "2" in 1.2. */
   number: number;
   projectNumber: number;
-  /** Reference such as "1.2": project number, then test script number. */
+  /** Reference such as "1.2": project number, then test area number. */
   ref: string;
   name: string;
   description: string | null;
@@ -105,6 +107,15 @@ export interface Suite {
   lastRun: RunSummary | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Area {
+  id: string;
+  name: string;
+  archived: boolean;
+  /** How many live test areas use it, across all projects. */
+  usageCount: number;
+  createdAt: string;
 }
 
 export interface Step {

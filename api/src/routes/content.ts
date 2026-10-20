@@ -19,7 +19,7 @@ import {
 } from '@testscript/shared';
 import { Db, one, query, tx } from '../db';
 import { audit, changed, currentUser, requireOrg, requireResource } from '../authz';
-import { badRequest, parse } from '../errors';
+import { badRequest, conflict, parse } from '../errors';
 import { iso, toPage } from '../pagination';
 import { mapRunSummary, RUN_SUMMARY_SQL } from '../runSummary';
 
@@ -48,6 +48,7 @@ function mapSuite(r: any): Suite {
     projectId: r.project_id,
     projectName: r.project_name,
     number: r.number,
+    areaId: r.area_id,
     projectNumber: r.project_number,
     ref: scriptRef(r.project_number, r.number),
     name: r.name,
@@ -224,21 +225,42 @@ contentRouter.get('/projects/:projectId/suites', async (req, res) => {
   res.json(toPage(rows, limit, mapSuite));
 });
 
+/** Check an area can be used for a test area in this project, and return its name. */
+async function usableArea(db: Db, orgId: string, projectId: string, areaId: string, exceptSuiteId?: string) {
+  const area = await one(
+    'SELECT id, name, archived_at FROM areas WHERE id = $1 AND org_id = $2',
+    [areaId, orgId],
+    db,
+  );
+  if (!area) throw badRequest('Choose an area from the list');
+  if (area.archived_at) throw badRequest(`${area.name} has been archived, so it can't be used for new test areas`);
+  const taken = await one(
+    `SELECT number FROM suites WHERE project_id = $1 AND area_id = $2 AND deleted_at IS NULL
+        AND ($3::uuid IS NULL OR id <> $3)`,
+    [projectId, areaId, exceptSuiteId ?? null],
+    db,
+  );
+  if (taken) throw conflict(`This project already has a ${area.name} test area`);
+  return area.name as string;
+}
+
 contentRouter.post('/projects/:projectId/suites', async (req, res) => {
   const user = currentUser(req);
   const p = await requireResource(req, 'project', req.params.projectId, 'manager');
   const input = parse(createSuiteSchema, req.body);
   const suite = await tx(async (db) => {
-    // Lock the project so two test scripts created at once can't get the same number.
+    // Lock the project so two test areas created at once can't get the same number.
     await db.query('SELECT 1 FROM projects WHERE id = $1 FOR UPDATE', [p.id]);
+    const name = await usableArea(db, p.org_id, p.id, input.areaId);
     const row = await one(
-      `INSERT INTO suites (org_id, project_id, number, name, description, created_by)
-       VALUES ($1, $2, (SELECT COALESCE(max(number), 0) + 1 FROM suites WHERE project_id = $2), $3, $4, $5) RETURNING id`,
-      [p.org_id, p.id, input.name, input.description ?? null, user.id],
+      `INSERT INTO suites (org_id, project_id, area_id, number, name, description, created_by)
+       VALUES ($1, $2, $3, (SELECT COALESCE(max(number), 0) + 1 FROM suites WHERE project_id = $2), $4, $5, $6)
+       RETURNING id`,
+      [p.org_id, p.id, input.areaId, name, input.description ?? null, user.id],
       db,
     );
     await db.query('UPDATE projects SET updated_at = now() WHERE id = $1', [p.id]);
-    await audit(req, { orgId: p.org_id, action: 'suite.created', entityType: 'suite', entityId: row.id, diff: input }, db);
+    await audit(req, { orgId: p.org_id, action: 'suite.created', entityType: 'suite', entityId: row.id, diff: { ...input, name } }, db);
     return getSuite(row.id, db);
   });
   res.status(201).json(suite);
@@ -253,13 +275,21 @@ contentRouter.patch('/suites/:suiteId', async (req, res) => {
   const s = await requireResource(req, 'suite', req.params.suiteId, 'manager');
   const input = parse(updateSuiteSchema, req.body);
   const suite = await tx(async (db) => {
-    const before = await one('SELECT name, description FROM suites WHERE id = $1 FOR UPDATE', [s.id], db);
-    await db.query(
-      `UPDATE suites SET name = COALESCE($2, name),
-              description = CASE WHEN $4 THEN $3 ELSE description END, updated_at = now() WHERE id = $1`,
-      [s.id, input.name ?? null, input.description ?? null, input.description !== undefined],
+    const before = await one(
+      'SELECT name, description, area_id AS "areaId", project_id FROM suites WHERE id = $1 FOR UPDATE',
+      [s.id],
+      db,
     );
-    await audit(req, { orgId: s.org_id, action: 'suite.updated', entityType: 'suite', entityId: s.id, diff: changed(before, input) }, db);
+    let name: string | null = null;
+    if (input.areaId && input.areaId !== before.areaId) {
+      name = await usableArea(db, s.org_id, before.project_id, input.areaId, s.id);
+    }
+    await db.query(
+      `UPDATE suites SET area_id = COALESCE($2, area_id), name = COALESCE($3, name),
+              description = CASE WHEN $5 THEN $4 ELSE description END, updated_at = now() WHERE id = $1`,
+      [s.id, name ? input.areaId : null, name, input.description ?? null, input.description !== undefined],
+    );
+    await audit(req, { orgId: s.org_id, action: 'suite.updated', entityType: 'suite', entityId: s.id, diff: changed(before, { ...input, ...(name ? { name } : {}) }) }, db);
     return getSuite(s.id, db);
   });
   res.json(suite);

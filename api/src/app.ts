@@ -12,6 +12,7 @@ import { contentRouter } from './routes/content';
 import { runsRouter } from './routes/runs';
 import { attachmentContentRouter, attachmentsRouter } from './routes/attachments';
 import { dashboardRouter } from './routes/dashboard';
+import { areasRouter } from './routes/areas';
 
 export function createApp() {
   const app = express();
@@ -75,7 +76,7 @@ export function createApp() {
   api.use(publicAuthRouter);
   api.use(attachmentContentRouter);
   api.use(requireAuth);
-  api.use(meRouter, orgsRouter, contentRouter, runsRouter, attachmentsRouter, dashboardRouter);
+  api.use(meRouter, orgsRouter, contentRouter, runsRouter, attachmentsRouter, dashboardRouter, areasRouter);
   api.use(notFoundHandler);
   app.use('/v1', api);
 

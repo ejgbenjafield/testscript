@@ -201,20 +201,27 @@ describe('invitations and roles', () => {
 
     it('blocks cross-tenant access to content', async () => {
       expect((await outsider.get(`/v1/projects/${projectId}/suites`)).status).toBe(404);
-      expect((await outsider.post(`/v1/projects/${projectId}/suites`, { name: 'x' })).status).toBe(404);
+      expect((await outsider.post(`/v1/projects/${projectId}/suites`, { areaId: '00000000-0000-4000-8000-000000000000' })).status).toBe(404);
       expect((await outsider.get('/v1/projects/not-a-uuid/suites')).status).toBe(404);
     });
 
     it('creates suites, test cases and steps', async () => {
-      const suite = await owner.post(`/v1/projects/${projectId}/suites`, { name: 'Checkout' });
+      const area = async (name: string) => (await owner.post(`/v1/orgs/${orgId}/areas`, { name })).body.id as string;
+      const checkoutArea = await area('Checkout');
+      const searchArea = await area('Search');
+      const basketArea = await area('Basket');
+
+      const suite = await owner.post(`/v1/projects/${projectId}/suites`, { areaId: checkoutArea });
       expect(suite.status).toBe(201);
-      expect(suite.body.ref).toBe('1.1');
+      expect(suite.body).toMatchObject({ ref: '1.1', name: 'Checkout', areaId: checkoutArea });
       suiteId = suite.body.id;
-      const second = await owner.post(`/v1/projects/${projectId}/suites`, { name: 'Search' });
+      // An area can only be used once in a project.
+      expect((await owner.post(`/v1/projects/${projectId}/suites`, { areaId: checkoutArea })).status).toBe(409);
+      const second = await owner.post(`/v1/projects/${projectId}/suites`, { areaId: searchArea });
       expect(second.body.ref).toBe('1.2');
       await owner.delete(`/v1/suites/${second.body.id}`);
       // Numbers aren't reused after a delete.
-      const third = await owner.post(`/v1/projects/${projectId}/suites`, { name: 'Basket' });
+      const third = await owner.post(`/v1/projects/${projectId}/suites`, { areaId: basketArea });
       expect(third.body.ref).toBe('1.3');
       await owner.delete(`/v1/suites/${third.body.id}`);
 
@@ -236,6 +243,28 @@ describe('invitations and roles', () => {
       expect(steps.body.data.map((s: any) => s.action)[0]).toBe('Log in first');
       expect(steps.body.data.map((s: any) => s.position)).toEqual([0, 1, 2]);
       stepIds = steps.body.data.map((s: any) => s.id);
+    });
+
+    it('lets admins maintain the list of areas', async () => {
+      expect((await tester.post(`/v1/orgs/${orgId}/areas`, { name: 'Payroll' })).status).toBe(403);
+      expect((await owner.post(`/v1/orgs/${orgId}/areas`, { name: 'checkout' })).status).toBe(409);
+      const list = await viewer.get(`/v1/orgs/${orgId}/areas`);
+      expect(list.body.data.map((a: any) => a.name)).toEqual(['Basket', 'Checkout', 'Search']);
+      const checkout = list.body.data.find((a: any) => a.name === 'Checkout');
+      expect(checkout.usageCount).toBe(1);
+
+      // Renaming an area renames the test areas that use it.
+      await owner.patch(`/v1/orgs/${orgId}/areas/${checkout.id}`, { name: 'Checkout flow' });
+      expect((await owner.get(`/v1/suites/${suiteId}`)).body.name).toBe('Checkout flow');
+      await owner.patch(`/v1/orgs/${orgId}/areas/${checkout.id}`, { name: 'Checkout' });
+
+      // Archived areas leave the dropdown and can't be used for new test areas.
+      const basket = list.body.data.find((a: any) => a.name === 'Basket');
+      await owner.patch(`/v1/orgs/${orgId}/areas/${basket.id}`, { archived: true });
+      expect((await owner.get(`/v1/orgs/${orgId}/areas`)).body.data.map((a: any) => a.name)).not.toContain('Basket');
+      expect((await owner.get(`/v1/orgs/${orgId}/areas?includeArchived=true`)).body.data).toHaveLength(3);
+      expect((await owner.post(`/v1/projects/${projectId}/suites`, { areaId: basket.id })).status).toBe(400);
+      expect((await outsider.get(`/v1/orgs/${orgId}/areas`)).status).toBe(404);
     });
 
     it('reorders test cases and steps', async () => {

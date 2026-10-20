@@ -31,7 +31,7 @@ export function NewOrgPage() {
       </div>
       <h1 className="mt-10 text-2xl font-semibold">Create an organisation</h1>
       <p className="mt-2 text-ink-muted">
-        An organisation holds your team's projects, test scripts and run results. You can invite people once it's set up.
+        An organisation holds your team's projects, test areas, test cases and run results. You can invite people once it's set up.
       </p>
       <form
         className="mt-8 space-y-5"

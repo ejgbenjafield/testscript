@@ -30,7 +30,7 @@ export function SuitePage() {
     enabled: Boolean(suite.data),
   });
   const update = useMutation({
-    mutationFn: (patch: Partial<Pick<Suite, 'name' | 'description'>>) => api.patch<Suite>(`/suites/${suiteId}`, patch),
+    mutationFn: (patch: { description?: string | null }) => api.patch<Suite>(`/suites/${suiteId}`, patch),
     onSuccess: (s) => {
       queryClient.setQueryData(keys.suite(suiteId), s);
       queryClient.invalidateQueries({ queryKey: keys.suites(s.projectId) });
@@ -45,17 +45,18 @@ export function SuitePage() {
     <div className="mx-auto max-w-5xl">
       <nav aria-label="Breadcrumb" className="text-sm text-ink-muted">
         <Link className="link" to={`/${org.slug}/dashboard`}>Dashboard</Link> /{' '}
-        <Link className="link" to={`/${org.slug}/projects/${s.projectId}`}>{project.data?.name ?? s.projectName ?? 'Project'}</Link> / Test script
+        <Link className="link" to={`/${org.slug}/projects/${s.projectId}`}>{project.data?.name ?? s.projectName ?? 'Project'}</Link> / Test area
       </nav>
       <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="flex items-baseline gap-3 text-2xl font-semibold">
             <span className="tabular-nums text-ink-faint">{s.ref}</span>
-            <InlineEdit ariaLabel="test script name" value={s.name} disabled={!canEdit} onSave={(name) => update.mutateAsync({ name })} />
+            {/* The name comes from the area list, which admins maintain in Settings. */}
+            <span>{s.name}</span>
           </h1>
           <div className="mt-1 max-w-2xl text-ink-muted">
             <InlineEdit
-              ariaLabel="test script description"
+              ariaLabel="test area description"
               multiline
               placeholder="Add a description"
               value={s.description ?? ''}
@@ -67,11 +68,11 @@ export function SuitePage() {
         <div className="flex gap-2">
           {canEdit && (
             <ConfirmButton
-              label="Delete test script"
+              label="Delete test area"
               className="btn-danger"
               title={`Delete ${s.name}?`}
-              body="Its test cases will be removed from view. Run history for this test script stays available from the runs' own links."
-              confirmLabel="Delete test script"
+              body="Its test cases will be removed from view. Run history for this test area stays available from the runs' own links."
+              confirmLabel="Delete test area"
               onConfirm={async () => {
                 await api.delete(`/suites/${s.id}`);
                 queryClient.invalidateQueries({ queryKey: keys.suites(s.projectId) });
@@ -256,7 +257,7 @@ function TestCaseRow({
           <ConfirmButton
             label={`Delete ${testCase.name}`}
             title={`Delete “${testCase.name}”?`}
-            body="It will be removed from this test script. Runs that already included it keep their results."
+            body="It will be removed from this test area. Runs that already included it keep their results."
             confirmLabel="Delete test case"
             onConfirm={async () => {
               await api.delete(`/test-cases/${testCase.id}`);
@@ -485,7 +486,7 @@ function RunHistory({ suiteId }: { suiteId: string }) {
   if (runs.isPending) return <Loading />;
   if (runs.isError) return <ErrorNote error={runs.error} />;
   if (runs.data.data.length === 0) {
-    return <EmptyState title="No runs yet">Start a run to work through this test script's test cases and record what passes and fails.</EmptyState>;
+    return <EmptyState title="No runs yet">Start a run to work through this test area's test cases and record what passes and fails.</EmptyState>;
   }
   return <RunList runs={runs.data.data} />;
 }
@@ -517,7 +518,7 @@ function StartRunModal({ suite, initial, onClose }: { suite: Suite; initial: 'al
     mutationFn: () =>
       api.post<RunDetail>(`/suites/${suite.id}/runs`, {
         name: name.trim() || undefined,
-        // Leave the list out when everything is ticked, so the run includes the whole test script.
+        // Leave the list out when everything is ticked, so the run includes the whole test area.
         testCaseIds: all ? undefined : [...selected],
       }),
     onSuccess: (run) => {
@@ -552,7 +553,7 @@ function StartRunModal({ suite, initial, onClose }: { suite: Suite; initial: 'al
     >
       <form id="start-run" className="space-y-4" onSubmit={(e) => { e.preventDefault(); start.mutate(); }}>
         <p className="text-sm text-ink-muted">
-          The run uses the test cases and steps as they are now. Later edits to the test script won't change it.
+          The run uses the test cases and steps as they are now. Later edits to the test area won't change it.
         </p>
         <div>
           <label className="label" htmlFor="run-name">Name (optional)</label>

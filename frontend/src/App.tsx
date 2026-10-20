@@ -13,6 +13,7 @@ import { ProjectPage } from './pages/ProjectPage';
 import { SuitePage } from './pages/SuitePage';
 import { RunPage } from './pages/RunPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { MembersPage } from './pages/MembersPage';
 
 export function App() {
   return (
@@ -29,6 +30,7 @@ export function App() {
           <Route path="projects/:projectId" element={<ProjectPage />} />
           <Route path="suites/:suiteId" element={<SuitePage />} />
           <Route path="runs/:runId" element={<RunPage />} />
+          <Route path="members" element={<MembersPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>

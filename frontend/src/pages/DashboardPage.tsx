@@ -24,7 +24,7 @@ export function DashboardPage() {
         <div>
           <h1 className="text-2xl font-semibold">{org.name}</h1>
           <p className="mt-1 text-ink-muted">
-            {plural(d.totals.projects, 'project')}, {plural(d.totals.suites, 'test script')}, {plural(d.totals.testCases, 'test case')}
+            {plural(d.totals.projects, 'project')}, {plural(d.totals.suites, 'test area')}, {plural(d.totals.testCases, 'test case')}
           </p>
         </div>
         {canEdit && (
@@ -57,7 +57,7 @@ export function DashboardPage() {
               action={canEdit && <button className="btn-primary" onClick={() => setCreating(true)}>Create your first project</button>}
             >
               {canEdit
-                ? 'A project groups the test scripts for one product or app. Start with one, then add test scripts and test cases inside it.'
+                ? 'A project groups the test areas for one product or app. Start with one, then add test areas and test cases inside it.'
                 : 'Projects will appear here once a manager creates one.'}
             </EmptyState>
           </div>
@@ -72,7 +72,7 @@ export function DashboardPage() {
                       {p.name}
                     </p>
                     <p className="mt-0.5 truncate text-sm text-ink-muted">
-                      {plural(p.suiteCount, 'test script')}, {plural(p.testCaseCount, 'test case')}. Last run {timeAgo(p.lastRunAt)}.
+                      {plural(p.suiteCount, 'test area')}, {plural(p.testCaseCount, 'test case')}. Last run {timeAgo(p.lastRunAt)}.
                     </p>
                   </div>
                   <div className="hidden text-right sm:block">

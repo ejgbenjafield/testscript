@@ -43,8 +43,16 @@ export const updateMemberSchema = z.object({ role: z.enum(ROLES) });
 export const createProjectSchema = z.object({ name, description });
 export const updateProjectSchema = createProjectSchema.partial();
 
-export const createSuiteSchema = z.object({ name, description });
+/** A test area (a "suite" in the code) takes its name from the organisation's list of areas. */
+export const createSuiteSchema = z.object({ areaId: uuid, description });
 export const updateSuiteSchema = createSuiteSchema.partial();
+
+export const createAreaSchema = z.object({ name: z.string().trim().min(1, 'Required').max(120) });
+export const updateAreaSchema = z.object({
+  name: z.string().trim().min(1, 'Required').max(120).optional(),
+  /** Archived areas disappear from the dropdown; test areas already using them keep them. */
+  archived: z.boolean().optional(),
+});
 
 export const stepInputSchema = z.object({
   action: z.string().trim().min(1, 'Required').max(10_000),
