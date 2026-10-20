@@ -34,11 +34,17 @@ export const updateOrgSchema = z.object({
   slug: slugSchema.refine((s) => !RESERVED_SLUGS.includes(s), 'That address is reserved').optional(),
 });
 
+/** An empty list of roles means Viewer (read-only). */
+const rolesSchema = z.array(z.enum(ROLES)).max(ROLES.length).transform((r) => [...new Set(r)]);
+
 export const inviteSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
-  role: z.enum(ROLES).refine((r) => r !== 'owner', 'Invite as admin, then transfer ownership'),
+  roles: rolesSchema.refine((r) => !r.includes('owner'), 'Invite as admin, then make them an owner'),
+  /** Projects they'll be able to see. Admins see every project anyway. */
+  projectIds: z.array(z.string().uuid()).max(500).default([]),
 });
-export const updateMemberSchema = z.object({ role: z.enum(ROLES) });
+export const updateMemberSchema = z.object({ roles: rolesSchema });
+export const memberProjectsSchema = z.object({ projectIds: z.array(z.string().uuid()).max(500) });
 
 export const createProjectSchema = z.object({ name, description });
 export const updateProjectSchema = createProjectSchema.partial();

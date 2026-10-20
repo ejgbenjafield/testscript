@@ -37,7 +37,7 @@ export const meRouter = Router();
 meRouter.get('/me', async (req, res) => {
   const user = currentUser(req);
   const orgs = await query(
-    `SELECT o.id, o.slug, o.name, m.role FROM org_members m
+    `SELECT o.id, o.slug, o.name, m.roles FROM org_members m
        JOIN organisations o ON o.id = m.org_id
       WHERE m.user_id = $1 ORDER BY o.name`,
     [user.id],

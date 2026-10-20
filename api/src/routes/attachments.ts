@@ -4,7 +4,7 @@ import { Router, type Request } from 'express';
 import multer from 'multer';
 import {
   MAX_UPLOAD_BYTES,
-  hasRole,
+  can,
   listAttachmentsSchema,
   sniffMimeType,
   uploadAttachmentSchema,
@@ -72,9 +72,9 @@ export async function attachmentsFor(entityType: AttachmentEntityType, ids: stri
 /** Check the caller may add or view files on the given step or run result. */
 async function requireEntity(req: Request, entityType: AttachmentEntityType, entityId: string, write: boolean) {
   if (entityType === 'step') {
-    return requireResource(req, 'step', entityId, write ? 'manager' : 'viewer');
+    return requireResource(req, 'step', entityId, write ? 'editContent' : 'read');
   }
-  const rr = await requireResource(req, 'runResult', entityId, write ? 'tester' : 'viewer');
+  const rr = await requireResource(req, 'runResult', entityId, write ? 'uploadResultFiles' : 'read');
   if (write && rr.run_status !== 'in_progress') throw conflict('This run has finished, so files can no longer be added');
   return rr;
 }
@@ -171,11 +171,12 @@ attachmentsRouter.get('/attachments', async (req, res) => {
 
 attachmentsRouter.delete('/attachments/:attachmentId', async (req, res) => {
   const user = currentUser(req);
-  const a = await requireResource(req, 'attachment', req.params.attachmentId, 'viewer');
-  // Step files belong to the script, so managers manage them. Run-result
-  // files can be removed by whoever added them, or a manager.
+  const a = await requireResource(req, 'attachment', req.params.attachmentId, 'read');
+  // Step files belong to the test case, so preparers manage them. Run-result
+  // files can be removed by whoever added them, or a preparer.
   const canDelete =
-    hasRole(a.role, 'manager') || (a.entity_type === 'run_result' && hasRole(a.role, 'tester') && a.uploader_id === user.id);
+    can(a.roles, 'editContent') ||
+    (a.entity_type === 'run_result' && can(a.roles, 'uploadResultFiles') && a.uploader_id === user.id);
   if (!canDelete) throw forbidden();
   const row = await one(
     'UPDATE attachments SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL RETURNING storage_key',

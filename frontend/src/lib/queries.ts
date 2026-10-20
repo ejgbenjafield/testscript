@@ -35,7 +35,7 @@ export function useOrg(): Org {
 
 /** Whether the current member's role allows an action. The API checks too. */
 export function useCan(permission: Permission) {
-  return can(useOrg().role, permission);
+  return can(useOrg().roles, permission);
 }
 
 /** The organisation's areas that can be picked for a test area (archived ones left out). */

@@ -18,7 +18,7 @@ import {
   scriptRef,
 } from '@testscript/shared';
 import { Db, one, query, tx } from '../db';
-import { audit, changed, currentUser, requireOrg, requireResource } from '../authz';
+import { audit, changed, currentUser, requireOrg, requireResource, visibleArgs, visibleProjects } from '../authz';
 import { badRequest, conflict, parse } from '../errors';
 import { iso, toPage } from '../pagination';
 import { mapRunSummary, RUN_SUMMARY_SQL } from '../runSummary';
@@ -143,21 +143,21 @@ async function applyOrder(db: Db, table: 'test_cases' | 'steps', ids: string[]) 
 // Projects ------------------------------------------------------------------------
 
 contentRouter.get('/orgs/:orgId/projects', async (req, res) => {
-  const org = await requireOrg(req, req.params.orgId, 'viewer');
+  const org = await requireOrg(req, req.params.orgId, 'read');
   const { after, limit } = parse(paginationSchema, req.query);
   const rows = await query(
     `${PROJECT_SQL}
-      WHERE p.org_id = $1 AND p.deleted_at IS NULL
+      WHERE p.org_id = $1 AND p.deleted_at IS NULL AND ${visibleProjects('p.id', 4, 5)}
         AND ($2::uuid IS NULL OR p.number > (SELECT number FROM projects WHERE id = $2))
       ORDER BY p.number LIMIT $3`,
-    [org.id, after ?? null, limit + 1],
+    [org.id, after ?? null, limit + 1, ...visibleArgs(req, org)],
   );
   res.json(toPage(rows, limit, mapProject));
 });
 
 contentRouter.post('/orgs/:orgId/projects', async (req, res) => {
   const user = currentUser(req);
-  const org = await requireOrg(req, req.params.orgId, 'manager');
+  const org = await requireOrg(req, req.params.orgId, 'manageProjects');
   const input = parse(createProjectSchema, req.body);
   const project = await tx(async (db) => {
     // Lock the organisation so two projects created at once can't get the same number.
@@ -175,15 +175,15 @@ contentRouter.post('/orgs/:orgId/projects', async (req, res) => {
 });
 
 contentRouter.get('/orgs/:orgId/projects/:projectId', async (req, res) => {
-  const org = await requireOrg(req, req.params.orgId, 'viewer');
-  const p = await requireResource(req, 'project', req.params.projectId, 'viewer');
+  const org = await requireOrg(req, req.params.orgId, 'read');
+  const p = await requireResource(req, 'project', req.params.projectId, 'read');
   if (p.org_id !== org.id) throw badRequest('Project belongs to a different organisation');
   res.json(await getProject(p.id));
 });
 
 contentRouter.patch('/orgs/:orgId/projects/:projectId', async (req, res) => {
-  const org = await requireOrg(req, req.params.orgId, 'manager');
-  const p = await requireResource(req, 'project', req.params.projectId, 'manager');
+  const org = await requireOrg(req, req.params.orgId, 'manageProjects');
+  const p = await requireResource(req, 'project', req.params.projectId, 'manageProjects');
   if (p.org_id !== org.id) throw badRequest('Project belongs to a different organisation');
   const input = parse(updateProjectSchema, req.body);
   const project = await tx(async (db) => {
@@ -200,8 +200,8 @@ contentRouter.patch('/orgs/:orgId/projects/:projectId', async (req, res) => {
 });
 
 contentRouter.delete('/orgs/:orgId/projects/:projectId', async (req, res) => {
-  const org = await requireOrg(req, req.params.orgId, 'manager');
-  const p = await requireResource(req, 'project', req.params.projectId, 'manager');
+  const org = await requireOrg(req, req.params.orgId, 'manageProjects');
+  const p = await requireResource(req, 'project', req.params.projectId, 'manageProjects');
   if (p.org_id !== org.id) throw badRequest('Project belongs to a different organisation');
   await tx(async (db) => {
     await db.query('UPDATE projects SET deleted_at = now() WHERE id = $1', [p.id]);
@@ -213,7 +213,7 @@ contentRouter.delete('/orgs/:orgId/projects/:projectId', async (req, res) => {
 // Suites ------------------------------------------------------------------------------
 
 contentRouter.get('/projects/:projectId/suites', async (req, res) => {
-  const p = await requireResource(req, 'project', req.params.projectId, 'viewer');
+  const p = await requireResource(req, 'project', req.params.projectId, 'read');
   const { after, limit } = parse(paginationSchema, req.query);
   const rows = await query(
     `${SUITE_SQL}
@@ -246,7 +246,7 @@ async function usableArea(db: Db, orgId: string, projectId: string, areaId: stri
 
 contentRouter.post('/projects/:projectId/suites', async (req, res) => {
   const user = currentUser(req);
-  const p = await requireResource(req, 'project', req.params.projectId, 'manager');
+  const p = await requireResource(req, 'project', req.params.projectId, 'editContent');
   const input = parse(createSuiteSchema, req.body);
   const suite = await tx(async (db) => {
     // Lock the project so two test areas created at once can't get the same number.
@@ -267,12 +267,12 @@ contentRouter.post('/projects/:projectId/suites', async (req, res) => {
 });
 
 contentRouter.get('/suites/:suiteId', async (req, res) => {
-  const s = await requireResource(req, 'suite', req.params.suiteId, 'viewer');
+  const s = await requireResource(req, 'suite', req.params.suiteId, 'read');
   res.json(await getSuite(s.id));
 });
 
 contentRouter.patch('/suites/:suiteId', async (req, res) => {
-  const s = await requireResource(req, 'suite', req.params.suiteId, 'manager');
+  const s = await requireResource(req, 'suite', req.params.suiteId, 'editContent');
   const input = parse(updateSuiteSchema, req.body);
   const suite = await tx(async (db) => {
     const before = await one(
@@ -296,7 +296,7 @@ contentRouter.patch('/suites/:suiteId', async (req, res) => {
 });
 
 contentRouter.delete('/suites/:suiteId', async (req, res) => {
-  const s = await requireResource(req, 'suite', req.params.suiteId, 'manager');
+  const s = await requireResource(req, 'suite', req.params.suiteId, 'editContent');
   await tx(async (db) => {
     await db.query('UPDATE suites SET deleted_at = now() WHERE id = $1', [s.id]);
     await audit(req, { orgId: s.org_id, action: 'suite.deleted', entityType: 'suite', entityId: s.id }, db);
@@ -315,7 +315,7 @@ const listTestCasesQuery = paginationSchema.extend({
 });
 
 contentRouter.get('/suites/:suiteId/test-cases', async (req, res) => {
-  const s = await requireResource(req, 'suite', req.params.suiteId, 'viewer');
+  const s = await requireResource(req, 'suite', req.params.suiteId, 'read');
   const { after, limit, includeSteps } = parse(listTestCasesQuery, req.query);
   const rows = await query(
     `SELECT t.*, (SELECT count(*) FROM steps st WHERE st.test_case_id = t.id AND st.deleted_at IS NULL) AS step_count
@@ -331,7 +331,7 @@ contentRouter.get('/suites/:suiteId/test-cases', async (req, res) => {
 
 contentRouter.post('/suites/:suiteId/test-cases', async (req, res) => {
   const user = currentUser(req);
-  const s = await requireResource(req, 'suite', req.params.suiteId, 'manager');
+  const s = await requireResource(req, 'suite', req.params.suiteId, 'editContent');
   const input = parse(createTestCaseSchema, req.body);
   const testCase = await tx(async (db) => {
     await db.query('SELECT 1 FROM suites WHERE id = $1 FOR UPDATE', [s.id]);
@@ -360,7 +360,7 @@ contentRouter.post('/suites/:suiteId/test-cases', async (req, res) => {
 });
 
 contentRouter.post('/suites/:suiteId/test-cases/reorder', async (req, res) => {
-  const s = await requireResource(req, 'suite', req.params.suiteId, 'manager');
+  const s = await requireResource(req, 'suite', req.params.suiteId, 'editContent');
   const { ids } = parse(reorderSchema, req.body);
   await tx(async (db) => {
     const current = await query(
@@ -376,12 +376,12 @@ contentRouter.post('/suites/:suiteId/test-cases/reorder', async (req, res) => {
 });
 
 contentRouter.get('/test-cases/:testCaseId', async (req, res) => {
-  const t = await requireResource(req, 'testCase', req.params.testCaseId, 'viewer');
+  const t = await requireResource(req, 'testCase', req.params.testCaseId, 'read');
   res.json(await getTestCase(t.id));
 });
 
 contentRouter.patch('/test-cases/:testCaseId', async (req, res) => {
-  const t = await requireResource(req, 'testCase', req.params.testCaseId, 'manager');
+  const t = await requireResource(req, 'testCase', req.params.testCaseId, 'editContent');
   const input = parse(updateTestCaseSchema, req.body);
   const testCase = await tx(async (db) => {
     const before = await one('SELECT name, description FROM test_cases WHERE id = $1 FOR UPDATE', [t.id], db);
@@ -397,7 +397,7 @@ contentRouter.patch('/test-cases/:testCaseId', async (req, res) => {
 });
 
 contentRouter.delete('/test-cases/:testCaseId', async (req, res) => {
-  const t = await requireResource(req, 'testCase', req.params.testCaseId, 'manager');
+  const t = await requireResource(req, 'testCase', req.params.testCaseId, 'editContent');
   await tx(async (db) => {
     await db.query('UPDATE test_cases SET deleted_at = now() WHERE id = $1', [t.id]);
     const rest = await query(
@@ -414,13 +414,13 @@ contentRouter.delete('/test-cases/:testCaseId', async (req, res) => {
 // Steps -------------------------------------------------------------------------------------
 
 contentRouter.get('/test-cases/:testCaseId/steps', async (req, res) => {
-  const t = await requireResource(req, 'testCase', req.params.testCaseId, 'viewer');
+  const t = await requireResource(req, 'testCase', req.params.testCaseId, 'read');
   const steps = await stepsFor([t.id]);
   res.json({ data: steps.get(t.id), nextCursor: null });
 });
 
 contentRouter.post('/test-cases/:testCaseId/steps', async (req, res) => {
-  const t = await requireResource(req, 'testCase', req.params.testCaseId, 'manager');
+  const t = await requireResource(req, 'testCase', req.params.testCaseId, 'editContent');
   const input = parse(createStepSchema, req.body);
   const step = await tx(async (db) => {
     await db.query('SELECT 1 FROM test_cases WHERE id = $1 FOR UPDATE', [t.id]);
@@ -446,7 +446,7 @@ contentRouter.post('/test-cases/:testCaseId/steps', async (req, res) => {
 });
 
 contentRouter.post('/test-cases/:testCaseId/steps/reorder', async (req, res) => {
-  const t = await requireResource(req, 'testCase', req.params.testCaseId, 'manager');
+  const t = await requireResource(req, 'testCase', req.params.testCaseId, 'editContent');
   const { ids } = parse(reorderSchema, req.body);
   await tx(async (db) => {
     const current = await query('SELECT id FROM steps WHERE test_case_id = $1 AND deleted_at IS NULL FOR UPDATE', [t.id], db);
@@ -458,7 +458,7 @@ contentRouter.post('/test-cases/:testCaseId/steps/reorder', async (req, res) => 
 });
 
 contentRouter.patch('/steps/:stepId', async (req, res) => {
-  const st = await requireResource(req, 'step', req.params.stepId, 'manager');
+  const st = await requireResource(req, 'step', req.params.stepId, 'editContent');
   const input = parse(updateStepSchema, req.body);
   const step = await tx(async (db) => {
     const before = await one('SELECT action, expected_result AS "expectedResult" FROM steps WHERE id = $1 FOR UPDATE', [st.id], db);
@@ -475,7 +475,7 @@ contentRouter.patch('/steps/:stepId', async (req, res) => {
 });
 
 contentRouter.delete('/steps/:stepId', async (req, res) => {
-  const st = await requireResource(req, 'step', req.params.stepId, 'manager');
+  const st = await requireResource(req, 'step', req.params.stepId, 'editContent');
   await tx(async (db) => {
     await db.query('UPDATE steps SET deleted_at = now() WHERE id = $1', [st.id]);
     const rest = await query(

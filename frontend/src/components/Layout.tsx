@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ROLE_LABELS, can, type Org, type SearchHit } from '@testscript/shared';
+import { can, describeRoles, type Org, type SearchHit } from '@testscript/shared';
 import { api, ApiError, qs } from '../lib/api';
 import { keys, OrgContext, useMe, useOrg } from '../lib/queries';
 import { useAuth } from '../auth/AuthProvider';
@@ -56,7 +56,7 @@ function Shell() {
         <nav className="flex flex-col gap-0.5 px-3 py-2" onClick={() => setMenuOpen(false)}>
           <SideLink to={`/${org.slug}/dashboard`}>Dashboard</SideLink>
           <SideLink to={`/${org.slug}/members`}>Members</SideLink>
-          {can(org.role, 'editOrg') && <SideLink to={`/${org.slug}/settings`}>Settings</SideLink>}
+          {can(org.roles, 'editOrg') && <SideLink to={`/${org.slug}/settings`}>Settings</SideLink>}
         </nav>
         <div className="mt-auto">
           <UserMenu />
@@ -120,7 +120,7 @@ function OrgSwitcher() {
         ))}
         <option value="__new">New organisation…</option>
       </select>
-      <p className="mt-1 px-1 text-xs text-ink-muted">You're {ROLE_LABELS[org.role].toLowerCase()} here</p>
+      <p className="mt-1 px-1 text-xs text-ink-muted">Your roles: {describeRoles(org.roles)}</p>
     </div>
   );
 }

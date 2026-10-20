@@ -10,7 +10,8 @@ import { ResultStrip, RunStatusBadge, StatCounts, TrendBars } from '../component
 
 export function DashboardPage() {
   const org = useOrg();
-  const canEdit = useCan('editContent');
+  // Only admins create projects.
+  const canEdit = useCan('manageProjects');
   const [creating, setCreating] = useState(false);
   const dash = useQuery({ queryKey: keys.dashboard(org.id), queryFn: () => api.get<Dashboard>(`/orgs/${org.id}/dashboard`) });
 
@@ -58,7 +59,7 @@ export function DashboardPage() {
             >
               {canEdit
                 ? 'A project groups the test areas for one product or app. Start with one, then add test areas and test cases inside it.'
-                : 'Projects will appear here once a manager creates one.'}
+                : 'Projects you\'re assigned to will appear here. Ask an admin if you expected to see one.'}
             </EmptyState>
           </div>
         ) : (

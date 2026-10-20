@@ -12,7 +12,7 @@ declare global {
         emailVerified: boolean;
       };
       /** Set by org-scoped routes once the caller's membership is known. */
-      org?: { id: string; slug: string; name: string; role: Role };
+      org?: { id: string; slug: string; name: string; roles: Role[] };
     }
   }
 }

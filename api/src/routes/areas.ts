@@ -36,7 +36,7 @@ const listQuery = z.object({
 });
 
 areasRouter.get('/orgs/:orgId/areas', async (req, res) => {
-  const org = await requireOrg(req, req.params.orgId, 'viewer');
+  const org = await requireOrg(req, req.params.orgId, 'read');
   const { includeArchived } = parse(listQuery, req.query);
   const rows = await query(
     `${AREA_SQL} WHERE a.org_id = $1 AND ($2 OR a.archived_at IS NULL) ORDER BY lower(a.name)`,
@@ -47,7 +47,7 @@ areasRouter.get('/orgs/:orgId/areas', async (req, res) => {
 
 areasRouter.post('/orgs/:orgId/areas', async (req, res) => {
   const user = currentUser(req);
-  const org = await requireOrg(req, req.params.orgId, 'admin');
+  const org = await requireOrg(req, req.params.orgId, 'editOrg');
   const { name } = parse(createAreaSchema, req.body);
   const area = await tx(async (db) => {
     const existing = await one('SELECT archived_at FROM areas WHERE org_id = $1 AND lower(name) = lower($2)', [org.id, name], db);
@@ -66,7 +66,7 @@ areasRouter.post('/orgs/:orgId/areas', async (req, res) => {
 });
 
 areasRouter.patch('/orgs/:orgId/areas/:areaId', async (req, res) => {
-  const org = await requireOrg(req, req.params.orgId, 'admin');
+  const org = await requireOrg(req, req.params.orgId, 'editOrg');
   const input = parse(updateAreaSchema, req.body);
   const area = await tx(async (db) => {
     const before = await one(

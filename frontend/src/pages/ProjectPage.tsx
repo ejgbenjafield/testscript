@@ -12,6 +12,8 @@ export function ProjectPage() {
   const { projectId = '' } = useParams();
   const org = useOrg();
   const canEdit = useCan('editContent');
+  // Renaming and deleting projects is for admins; adding test areas is for preparers.
+  const canManage = useCan('manageProjects');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
@@ -47,7 +49,7 @@ export function ProjectPage() {
         <div className="min-w-0 flex-1">
           <h1 className="flex items-baseline gap-3 text-2xl font-semibold">
             <span className="tabular-nums text-ink-faint">{p.number}</span>
-            <InlineEdit ariaLabel="project name" value={p.name} disabled={!canEdit} onSave={(name) => update.mutateAsync({ name })} />
+            <InlineEdit ariaLabel="project name" value={p.name} disabled={!canManage} onSave={(name) => update.mutateAsync({ name })} />
           </h1>
           <div className="mt-1 max-w-2xl text-ink-muted">
             <InlineEdit
@@ -55,14 +57,14 @@ export function ProjectPage() {
               multiline
               placeholder="Add a description"
               value={p.description ?? ''}
-              disabled={!canEdit}
+              disabled={!canManage}
               onSave={(description) => update.mutateAsync({ description: description || null })}
             />
           </div>
         </div>
-        {canEdit && (
+        {(canEdit || canManage) && (
           <div className="flex gap-2">
-            <ConfirmButton
+            {canManage && <ConfirmButton
               label="Delete project"
               className="btn-danger"
               title={`Delete ${p.name}?`}
@@ -74,8 +76,8 @@ export function ProjectPage() {
                 toast.info(`Deleted ${p.name}`);
                 navigate(`/${org.slug}/dashboard`);
               }}
-            />
-            <button className="btn-primary" onClick={() => setCreating(true)}>New test area</button>
+            />}
+            {canEdit && <button className="btn-primary" onClick={() => setCreating(true)}>New test area</button>}
           </div>
         )}
       </div>

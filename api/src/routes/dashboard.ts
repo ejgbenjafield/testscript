@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { scriptRef, type Dashboard, type DashboardProject, type SearchHit } from '@testscript/shared';
 import { one, query } from '../db';
-import { requireOrg } from '../authz';
+import { requireOrg, visibleArgs, visibleProjects } from '../authz';
 import { parse } from '../errors';
 import { iso } from '../pagination';
 import { mapRunSummary, RUN_SUMMARY_SQL, statsFromRow } from '../runSummary';
@@ -10,24 +10,27 @@ import { mapRunSummary, RUN_SUMMARY_SQL, statsFromRow } from '../runSummary';
 export const dashboardRouter = Router();
 
 dashboardRouter.get('/orgs/:orgId/dashboard', async (req, res) => {
-  const org = await requireOrg(req, req.params.orgId, 'viewer');
+  const org = await requireOrg(req, req.params.orgId, 'read');
+  // Everyone except admins and owners only sees the projects they're assigned to.
+  const vis = visibleArgs(req, org);
 
   const totals = await one(
     `SELECT
-       (SELECT count(*) FROM projects WHERE org_id = $1 AND deleted_at IS NULL) AS projects,
+       (SELECT count(*) FROM projects p WHERE p.org_id = $1 AND p.deleted_at IS NULL AND ${visibleProjects('p.id', 2, 3)}) AS projects,
        (SELECT count(*) FROM suites s JOIN projects p ON p.id = s.project_id
-         WHERE s.org_id = $1 AND s.deleted_at IS NULL AND p.deleted_at IS NULL) AS suites,
+         WHERE s.org_id = $1 AND s.deleted_at IS NULL AND p.deleted_at IS NULL AND ${visibleProjects('p.id', 2, 3)}) AS suites,
        (SELECT count(*) FROM test_cases t JOIN suites s ON s.id = t.suite_id JOIN projects p ON p.id = s.project_id
-         WHERE t.org_id = $1 AND t.deleted_at IS NULL AND s.deleted_at IS NULL AND p.deleted_at IS NULL) AS test_cases`,
-    [org.id],
+         WHERE t.org_id = $1 AND t.deleted_at IS NULL AND s.deleted_at IS NULL AND p.deleted_at IS NULL AND ${visibleProjects('p.id', 2, 3)}) AS test_cases`,
+    [org.id, ...vis],
   );
   const last30 = await one(
     `SELECT count(DISTINCT r.id) AS runs,
             count(rr.id) FILTER (WHERE rr.result = 'pass') AS passed,
             count(rr.id) FILTER (WHERE rr.result = 'fail') AS failed
-       FROM runs r LEFT JOIN run_results rr ON rr.run_id = r.id
-      WHERE r.org_id = $1 AND r.started_at > now() - interval '30 days'`,
-    [org.id],
+       FROM runs r JOIN suites s ON s.id = r.suite_id JOIN projects p ON p.id = s.project_id
+       LEFT JOIN run_results rr ON rr.run_id = r.id
+      WHERE r.org_id = $1 AND r.started_at > now() - interval '30 days' AND ${visibleProjects('p.id', 2, 3)}`,
+    [org.id, ...vis],
   );
 
   const projects = await query(
@@ -48,20 +51,23 @@ dashboardRouter.get('/orgs/:orgId/dashboard', async (req, res) => {
                 GROUP BY r.id ORDER BY r.finished_at DESC LIMIT 7
             ) t) AS trend
        FROM projects p
-      WHERE p.org_id = $1 AND p.deleted_at IS NULL
+      WHERE p.org_id = $1 AND p.deleted_at IS NULL AND ${visibleProjects('p.id', 2, 3)}
       ORDER BY p.number
       LIMIT 100`,
-    [org.id],
+    [org.id, ...vis],
   );
 
   const runsWithNames = (where: string, limit: number) =>
     query(
       `SELECT x.*, s.name AS suite_name, s.number AS suite_number, p.number AS project_number, p.name AS project_name
-         FROM (${RUN_SUMMARY_SQL} WHERE r.org_id = $1 AND ${where} ORDER BY r.started_at DESC LIMIT ${limit}) x
+         FROM (${RUN_SUMMARY_SQL}
+                WHERE r.org_id = $1 AND ${where}
+                  AND r.suite_id IN (SELECT vs.id FROM suites vs JOIN projects p ON p.id = vs.project_id
+                                      WHERE vs.deleted_at IS NULL AND p.deleted_at IS NULL AND ${visibleProjects('p.id', 2, 3)})
+                ORDER BY r.started_at DESC LIMIT ${limit}) x
          JOIN suites s ON s.id = x.suite_id JOIN projects p ON p.id = s.project_id
-        WHERE s.deleted_at IS NULL AND p.deleted_at IS NULL
         ORDER BY x.started_at DESC`,
-      [org.id],
+      [org.id, ...vis],
     );
   const [active, recent] = await Promise.all([
     runsWithNames(`r.status = 'in_progress'`, 10),
@@ -113,7 +119,7 @@ const searchQuery = z.object({
 
 /** Search test case names, descriptions and step text across the organisation. */
 dashboardRouter.get('/orgs/:orgId/search', async (req, res) => {
-  const org = await requireOrg(req, req.params.orgId, 'viewer');
+  const org = await requireOrg(req, req.params.orgId, 'read');
   const { q, limit } = parse(searchQuery, req.query);
   const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
   const rows = await query(
@@ -139,9 +145,10 @@ dashboardRouter.get('/orgs/:orgId/search', async (req, res) => {
        JOIN test_cases t ON t.id = b.test_case_id AND t.deleted_at IS NULL
        JOIN suites s ON s.id = t.suite_id AND s.deleted_at IS NULL
        JOIN projects p ON p.id = s.project_id AND p.deleted_at IS NULL
+      WHERE ${visibleProjects('p.id', 5, 6)}
       ORDER BY b.rank DESC, t.name
       LIMIT $4`,
-    [org.id, q, like, limit],
+    [org.id, q, like, limit, ...visibleArgs(req, org)],
   );
   const data: SearchHit[] = rows.map((r) => ({
     testCaseId: r.test_case_id,

@@ -2,20 +2,30 @@ import { describe, expect, it } from 'vitest';
 import {
   can,
   computeRunStats,
-  hasRole,
+  describeRoles,
   sniffMimeType,
   testCaseStatus,
   createOrgSchema,
 } from './index';
 
 describe('roles', () => {
-  it('orders roles', () => {
-    expect(hasRole('owner', 'admin')).toBe(true);
-    expect(hasRole('tester', 'manager')).toBe(false);
-    expect(hasRole(null, 'viewer')).toBe(false);
-    expect(can('tester', 'recordResults')).toBe(true);
-    expect(can('tester', 'editContent')).toBe(false);
-    expect(can('admin', 'manageMembers')).toBe(true);
+  it('combines roles', () => {
+    expect(can(['tester'], 'runTests')).toBe(true);
+    expect(can(['tester'], 'editContent')).toBe(false);
+    expect(can(['preparer'], 'editContent')).toBe(true);
+    expect(can(['preparer'], 'runTests')).toBe(true);
+    expect(can(['preparer'], 'manageProjects')).toBe(false);
+    expect(can(['admin'], 'manageProjects')).toBe(true);
+    expect(can(['admin'], 'seeAllProjects')).toBe(true);
+    expect(can(['admin'], 'transferOwnership')).toBe(false);
+    expect(can(['owner'], 'transferOwnership')).toBe(true);
+    expect(can([], 'read')).toBe(true);
+    expect(can([], 'runTests')).toBe(false);
+    expect(can(null, 'read')).toBe(false);
+  });
+  it('describes roles', () => {
+    expect(describeRoles([])).toBe('Viewer');
+    expect(describeRoles(['tester', 'preparer'])).toBe('Preparer, Tester');
   });
 });
 

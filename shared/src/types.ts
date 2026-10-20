@@ -27,7 +27,7 @@ export interface OrgSummary {
   id: string;
   slug: string;
   name: string;
-  role: Role;
+  roles: Role[];
 }
 
 export interface Me {
@@ -39,7 +39,7 @@ export interface Org {
   id: string;
   slug: string;
   name: string;
-  role: Role;
+  roles: Role[];
   plan: string;
   seatCount: number;
   createdAt: string;
@@ -50,14 +50,17 @@ export interface Member {
   email: string;
   name: string | null;
   avatarUrl: string | null;
-  role: Role;
+  roles: Role[];
+  /** Projects they're assigned to. Admins and owners see every project regardless. */
+  projectIds: string[];
   joinedAt: string;
 }
 
 export interface Invitation {
   id: string;
   email: string;
-  role: Role;
+  roles: Role[];
+  projectIds: string[];
   invitedBy: string | null;
   expiresAt: string;
   createdAt: string;
@@ -70,7 +73,7 @@ export interface InvitationPreview {
   orgName: string;
   orgSlug: string;
   email: string;
-  role: Role;
+  roles: Role[];
   invitedBy: string | null;
   expired: boolean;
   accepted: boolean;

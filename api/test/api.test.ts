@@ -23,6 +23,7 @@ function as(token: string) {
     get: (url: string) => auth(request(app).get(url)),
     post: (url: string, body?: object) => auth(request(app).post(url)).send(body ?? {}),
     patch: (url: string, body?: object) => auth(request(app).patch(url)).send(body ?? {}),
+    put: (url: string, body?: object) => auth(request(app).put(url)).send(body ?? {}),
     delete: (url: string) => auth(request(app).delete(url)),
     upload: (fields: Record<string, string>, file: Buffer, filename: string, contentType: string) => {
       let r = auth(request(app).post('/v1/attachments'));
@@ -78,7 +79,7 @@ describe('organisations', () => {
   it('creates an org with the creator as owner', async () => {
     const res = await owner.post('/v1/orgs', { name: 'Acme QA' });
     expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ name: 'Acme QA', slug: 'acme-qa', role: 'owner', plan: 'free', seatCount: 1 });
+    expect(res.body).toMatchObject({ name: 'Acme QA', slug: 'acme-qa', roles: ['owner'], plan: 'free', seatCount: 1 });
     orgId = res.body.id;
     slug = res.body.slug;
   });
@@ -108,16 +109,17 @@ describe('invitations and roles', () => {
   let tester: ReturnType<typeof as>;
   let viewer: ReturnType<typeof as>;
   let testerId: string;
+  let viewerId: string;
 
   it('invites, previews and accepts', async () => {
-    const inv = await owner.post(`/v1/orgs/${orgId}/members/invite`, { email: 'Tester@Acme.test', role: 'tester' });
+    const inv = await owner.post(`/v1/orgs/${orgId}/members/invite`, { email: 'Tester@Acme.test', roles: ['tester'] });
     expect(inv.status).toBe(201);
     expect(inv.body.inviteUrl).toMatch(/\/invite\/[\w-]+$/);
     const token = inv.body.inviteUrl.split('/').pop();
 
     tester = as(await login('tester@acme.test'));
     const preview = await tester.get(`/v1/invitations/${token}`);
-    expect(preview.body).toMatchObject({ orgName: 'Acme QA', role: 'tester', expired: false });
+    expect(preview.body).toMatchObject({ orgName: 'Acme QA', roles: ['tester'], expired: false });
 
     const wrongPerson = await outsider.post(`/v1/invitations/${token}/accept`);
     expect(wrongPerson.status).toBe(403);
@@ -134,7 +136,7 @@ describe('invitations and roles', () => {
   });
 
   it('lists pending invitations and revokes them', async () => {
-    const inv = await owner.post(`/v1/orgs/${orgId}/members/invite`, { email: 'viewer@acme.test', role: 'viewer' });
+    const inv = await owner.post(`/v1/orgs/${orgId}/members/invite`, { email: 'viewer@acme.test', roles: [] });
     const list = await owner.get(`/v1/orgs/${orgId}/invitations`);
     expect(list.body.data.map((i: any) => i.email)).toContain('viewer@acme.test');
     expect((await owner.delete(`/v1/orgs/${orgId}/invitations/${inv.body.id}`)).status).toBe(204);
@@ -144,18 +146,18 @@ describe('invitations and roles', () => {
   });
 
   it('adds a viewer', async () => {
-    const inv = await owner.post(`/v1/orgs/${orgId}/members/invite`, { email: 'viewer@acme.test', role: 'viewer' });
+    const inv = await owner.post(`/v1/orgs/${orgId}/members/invite`, { email: 'viewer@acme.test', roles: [] });
     const token = inv.body.inviteUrl.split('/').pop();
     expect((await viewer.post(`/v1/invitations/${token}/accept`)).status).toBe(200);
   });
 
   it('stops people inviting existing members or inviting owners', async () => {
-    expect((await owner.post(`/v1/orgs/${orgId}/members/invite`, { email: 'tester@acme.test', role: 'viewer' })).status).toBe(409);
-    expect((await owner.post(`/v1/orgs/${orgId}/members/invite`, { email: 'x@acme.test', role: 'owner' })).status).toBe(400);
+    expect((await owner.post(`/v1/orgs/${orgId}/members/invite`, { email: 'tester@acme.test', roles: [] })).status).toBe(409);
+    expect((await owner.post(`/v1/orgs/${orgId}/members/invite`, { email: 'x@acme.test', roles: ['owner'] })).status).toBe(400);
   });
 
   it('enforces roles', async () => {
-    expect((await tester.post(`/v1/orgs/${orgId}/members/invite`, { email: 'x@acme.test', role: 'viewer' })).status).toBe(403);
+    expect((await tester.post(`/v1/orgs/${orgId}/members/invite`, { email: 'x@acme.test', roles: [] })).status).toBe(403);
     expect((await tester.post(`/v1/orgs/${orgId}/projects`, { name: 'Nope' })).status).toBe(403);
     expect((await viewer.get(`/v1/orgs/${orgId}/projects`)).status).toBe(200);
   });
@@ -163,15 +165,19 @@ describe('invitations and roles', () => {
   it('manages member roles but always keeps an owner', async () => {
     const members = await owner.get(`/v1/orgs/${orgId}/members`);
     expect(members.body.data).toHaveLength(3);
-    const ownerId = members.body.data.find((m: any) => m.role === 'owner').userId;
+    const ownerId = members.body.data.find((m: any) => m.roles.includes('owner')).userId;
+    viewerId = members.body.data.find((m: any) => m.email === 'viewer@acme.test').userId;
     testerId = members.body.data.find((m: any) => m.email === 'tester@acme.test').userId;
 
-    expect((await owner.patch(`/v1/orgs/${orgId}/members/${ownerId}`, { role: 'admin' })).status).toBe(400);
+    expect((await owner.patch(`/v1/orgs/${orgId}/members/${ownerId}`, { roles: ['admin'] })).status).toBe(400);
     expect((await owner.delete(`/v1/orgs/${orgId}/members/${ownerId}`)).status).toBe(400);
 
-    const promoted = await owner.patch(`/v1/orgs/${orgId}/members/${testerId}`, { role: 'manager' });
-    expect(promoted.body.role).toBe('manager');
-    await owner.patch(`/v1/orgs/${orgId}/members/${testerId}`, { role: 'tester' });
+    // Roles combine, and come back in a standard order.
+    const promoted = await owner.patch(`/v1/orgs/${orgId}/members/${testerId}`, { roles: ['tester', 'preparer'] });
+    expect(promoted.body.roles).toEqual(['preparer', 'tester']);
+    await owner.patch(`/v1/orgs/${orgId}/members/${testerId}`, { roles: ['tester'] });
+    // Only owners can make owners.
+    expect((await tester.patch(`/v1/orgs/${orgId}/members/${viewerId}`, { roles: ['owner'] })).status).toBe(403);
   });
 
   it('paginates members', async () => {
@@ -197,6 +203,28 @@ describe('invitations and roles', () => {
       projectId = res.body.id;
       const edited = await owner.patch(`/v1/orgs/${orgId}/projects/${projectId}`, { name: 'Web app v2' });
       expect(edited.body).toMatchObject({ name: 'Web app v2', description: 'Main site' });
+    });
+
+    it('only shows people the projects they are assigned to', async () => {
+      expect((await tester.get(`/v1/orgs/${orgId}/projects`)).body.data).toHaveLength(0);
+      expect((await tester.get(`/v1/orgs/${orgId}/projects/${projectId}`)).status).toBe(404);
+      expect((await tester.get(`/v1/projects/${projectId}/suites`)).status).toBe(404);
+      expect((await tester.get(`/v1/orgs/${orgId}/dashboard`)).body.totals.projects).toBe(0);
+
+      expect((await tester.put(`/v1/orgs/${orgId}/members/${testerId}/projects`, { projectIds: [projectId] })).status).toBe(403);
+      for (const id of [testerId, viewerId]) {
+        const res = await owner.put(`/v1/orgs/${orgId}/members/${id}/projects`, { projectIds: [projectId] });
+        expect(res.body.projectIds).toEqual([projectId]);
+      }
+      expect((await tester.get(`/v1/orgs/${orgId}/projects`)).body.data).toHaveLength(1);
+      expect((await viewer.get(`/v1/orgs/${orgId}/dashboard`)).body.totals.projects).toBe(1);
+    });
+
+    it('lets only admins create projects', async () => {
+      await owner.patch(`/v1/orgs/${orgId}/members/${testerId}`, { roles: ['preparer'] });
+      expect((await tester.post(`/v1/orgs/${orgId}/projects`, { name: 'Nope' })).status).toBe(403);
+      expect((await tester.patch(`/v1/orgs/${orgId}/projects/${projectId}`, { name: 'Nope' })).status).toBe(403);
+      await owner.patch(`/v1/orgs/${orgId}/members/${testerId}`, { roles: ['tester'] });
     });
 
     it('blocks cross-tenant access to content', async () => {

@@ -25,7 +25,7 @@ function defaultRunName(date = new Date()) {
 
 runsRouter.post('/suites/:suiteId/runs', async (req, res) => {
   const user = currentUser(req);
-  const s = await requireResource(req, 'suite', req.params.suiteId, 'tester');
+  const s = await requireResource(req, 'suite', req.params.suiteId, 'runTests');
   const input = parse(startRunSchema, req.body);
 
   const runId = await tx(async (db) => {
@@ -70,7 +70,7 @@ runsRouter.post('/suites/:suiteId/runs', async (req, res) => {
 });
 
 runsRouter.get('/suites/:suiteId/runs', async (req, res) => {
-  const s = await requireResource(req, 'suite', req.params.suiteId, 'viewer');
+  const s = await requireResource(req, 'suite', req.params.suiteId, 'read');
   const { after, limit } = parse(paginationSchema, req.query);
   const rows = await query(
     `${RUN_SUMMARY_SQL}
@@ -133,12 +133,12 @@ function mapResult(r: any, attachments: Attachment[]): RunResult {
 }
 
 runsRouter.get('/runs/:runId', async (req, res) => {
-  const run = await requireResource(req, 'run', req.params.runId, 'viewer');
+  const run = await requireResource(req, 'run', req.params.runId, 'read');
   res.json(await loadRun(run.id));
 });
 
 runsRouter.patch('/runs/:runId', async (req, res) => {
-  const run = await requireResource(req, 'run', req.params.runId, 'tester');
+  const run = await requireResource(req, 'run', req.params.runId, 'runTests');
   const { status } = parse(updateRunSchema, req.body);
   await tx(async (db) => {
     const updated = await one(
@@ -154,7 +154,7 @@ runsRouter.patch('/runs/:runId', async (req, res) => {
 
 runsRouter.post('/runs/:runId/results', async (req, res) => {
   const user = currentUser(req);
-  const run = await requireResource(req, 'run', req.params.runId, 'tester');
+  const run = await requireResource(req, 'run', req.params.runId, 'runTests');
   const input = parse(recordResultSchema, req.body);
   if (run.status !== 'in_progress') throw conflict('This run has finished, so results can no longer change');
 
@@ -185,7 +185,7 @@ runsRouter.post('/runs/:runId/results', async (req, res) => {
 });
 
 runsRouter.delete('/run-results/:resultId', async (req, res) => {
-  const rr = await requireResource(req, 'runResult', req.params.resultId, 'tester');
+  const rr = await requireResource(req, 'runResult', req.params.resultId, 'runTests');
   if (rr.run_status !== 'in_progress') throw conflict('This run has finished, so results can no longer change');
   await tx(async (db) => {
     await db.query(

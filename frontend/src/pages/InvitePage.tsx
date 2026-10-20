@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ROLE_DESCRIPTIONS, ROLE_LABELS, type InvitationPreview } from '@testscript/shared';
+import { describeRoles, type InvitationPreview } from '@testscript/shared';
 import { api } from '../lib/api';
 import { keys, useMe } from '../lib/queries';
 import { useAuth } from '../auth/AuthProvider';
@@ -37,7 +37,7 @@ export function InvitePage() {
     <main className="mx-auto max-w-lg px-6 py-16">
       <h1 className="text-2xl font-semibold">Join {inv.orgName}</h1>
       <p className="mt-2 text-ink-muted">
-        {inv.invitedBy ?? 'Someone'} invited {inv.email} to join as {ROLE_LABELS[inv.role].toLowerCase()}: {ROLE_DESCRIPTIONS[inv.role].toLowerCase()}.
+        {inv.invitedBy ?? 'Someone'} invited {inv.email} to join, with these roles: {describeRoles(inv.roles)}.
       </p>
 
       {inv.accepted ? (
