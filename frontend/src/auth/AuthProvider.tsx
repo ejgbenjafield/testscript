@@ -135,7 +135,7 @@ function Auth0Bridge({ children }: { children: ReactNode }) {
       getToken: async () => {
         if (!isAuthenticated) return null;
         try {
-          return await getAccessTokenSilently();
+          return (await getAccessTokenSilently()) ?? null;
         } catch {
           return null;
         }
