@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    @apply bg-canvas text-ink font-sans text-base;
+  }
+  :focus-visible {
+    outline: 2px solid #2b4acb;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  h1, h2, h3 {
+    @apply text-ink;
+    letter-spacing: -0.01em;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary { @apply btn bg-cobalt-600 text-white hover:bg-cobalt-700; }
+  .btn-secondary { @apply btn border border-line-strong bg-white text-ink hover:bg-canvas; }
+  .btn-ghost { @apply btn text-ink-soft hover:bg-ink/5; }
+  .btn-danger { @apply btn border border-fail/40 bg-white text-fail hover:bg-fail-soft; }
+  .btn-sm { @apply px-2.5 py-1 text-xs; }
+
+  .field {
+    @apply block w-full rounded-md border border-line-strong bg-white px-3 py-2 text-sm text-ink
+      placeholder:text-ink-faint focus:border-cobalt-500 focus:outline-none focus:ring-2 focus:ring-cobalt-100;
+  }
+  .label { @apply mb-1 block text-sm font-medium text-ink-soft; }
+  .panel { @apply rounded-lg border border-line bg-white; }
+  .link { @apply text-cobalt-600 underline-offset-2 hover:underline; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

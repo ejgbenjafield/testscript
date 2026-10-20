@@ -1,0 +1,27 @@
+{
+  "name": "testscript",
+  "private": true,
+  "version": "0.1.0",
+  "description": "TestScript: multi-tenant manual test case management",
+  "workspaces": [
+    "shared",
+    "api",
+    "frontend"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "npm run build -w shared && concurrently -k -n shared,api,web -c gray,blue,magenta \"npm run dev -w shared\" \"npm run dev -w api\" \"npm run dev -w frontend\"",
+    "replit:dev": "npm install && npm run migrate && WEB_PORT=5000 npm run dev",
+    "build": "npm run build -w shared && npm run build -w api && npm run build -w frontend",
+    "start": "npm run migrate && node api/dist/index.js",
+    "migrate": "npm run migrate -w api",
+    "test": "npm run build -w shared && npm test -w shared && npm test -w api",
+    "typecheck": "npm run build -w shared && npm run typecheck -w api && npm run typecheck -w frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  }
+}
