@@ -12,7 +12,10 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 
 importsRouter.post('/suites/:suiteId/import', upload.single('file'), async (req, res) => {
   const user = currentUser(req);
-  const s = await requireResource(req, 'suite', req.params.suiteId, 'editContent');
+  // With the upload middleware in front, Express's types lose the route's
+  // parameter names, so read the id explicitly.
+  const { suiteId } = req.params as Record<string, string>;
+  const s = await requireResource(req, 'suite', suiteId, 'editContent');
   const preview = req.query.preview === 'true';
   if (!req.file || req.file.size === 0) throw badRequest('Choose a CSV file to upload');
   if (req.file.size > 5 * 1024 * 1024) throw new HttpError(413, 'file_too_large', 'CSV files can be up to 5 MB');
