@@ -1,0 +1,1 @@
+ALTER TABLE suites DROP COLUMN IF EXISTS test_type;

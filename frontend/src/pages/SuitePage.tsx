@@ -3,13 +3,14 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Attachment, ImportResult, Page, Project, RunDetail, RunSummary, Step, Suite, TestCase } from '@testscript/shared';
 import { api, errorMessage, qs } from '../lib/api';
-import { TEST_CASE_FIELD_KEYS, TEST_CASE_FIELD_LABELS } from '@testscript/shared';
+import { templateFor, type TemplateDefinition } from '@testscript/shared';
 import { keys, useCan, useOrg } from '../lib/queries';
 import { plural } from '../lib/format';
 import { ConfirmButton, EmptyState, ErrorNote, InlineEdit, Loading, Modal, Tabs, toast } from '../components/ui';
 import { SortableItem, SortableList } from '../components/Sortable';
 import { Files } from '../components/Files';
 import { RunList } from './DashboardPage';
+import { TestTypeBadge } from '../components/results';
 
 type CasesPage = Page<TestCase>;
 
@@ -51,10 +52,11 @@ export function SuitePage() {
       </nav>
       <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="flex items-baseline gap-3 text-2xl font-semibold">
+          <h1 className="flex flex-wrap items-baseline gap-3 text-2xl font-semibold">
             <span className="tabular-nums text-ink-faint">{s.ref}</span>
             {/* The name comes from the area list, which admins maintain in Settings. */}
             <span>{s.name}</span>
+            <TestTypeBadge type={s.testType} className="self-center" />
           </h1>
           <div className="mt-1 max-w-2xl text-ink-muted">
             <InlineEdit
@@ -279,7 +281,7 @@ function TestCaseRow({
       </div>
       {expanded && (
         <div id={panelId} className="border-t border-line bg-canvas/50 px-4 pb-4 pt-3 sm:pl-[5.5rem]">
-          <TestCaseFields testCase={testCase} canEdit={canEdit} onSave={(patch) => update.mutateAsync(patch)} />
+          <TestCaseFields testCase={testCase} template={templateFor(suite.testType)} canEdit={canEdit} onSave={(patch) => update.mutateAsync(patch)} />
           <Steps testCase={testCase} suite={suite} />
         </div>
       )}
@@ -318,15 +320,14 @@ function Steps({ testCase, suite }: { testCase: TestCase; suite: Suite }) {
     onSettled: invalidate,
   });
 
+  const template = templateFor(suite.testType);
   return (
     <div>
       {steps.length > 0 && (
-        <div className="hidden grid-cols-[1.5rem_1.5rem_1fr_1fr_1fr_3.5rem] gap-3 px-1 pb-1 text-xs font-medium text-ink-muted md:grid">
+        <div className={`hidden gap-3 px-1 pb-1 text-xs font-medium text-ink-muted md:grid ${stepGrid(template)}`}>
           <span />
           <span />
-          <span>Question or test description</span>
-          <span>Details to validate</span>
-          <span>Expected result</span>
+          {template.stepFields.map((f) => <span key={f.key}>{f.label}</span>)}
           <span />
         </div>
       )}
@@ -334,22 +335,41 @@ function Steps({ testCase, suite }: { testCase: TestCase; suite: Suite }) {
         <ol className="space-y-2">
           {steps.map((step, i) => (
             <SortableItem key={step.id} id={step.id} disabled={!canEdit} className="rounded-md border border-line bg-white">
-              {(handle) => <StepRow step={step} index={i} handle={handle} onChanged={invalidate} />}
+              {(handle) => <StepRow step={step} index={i} template={template} handle={handle} onChanged={invalidate} />}
             </SortableItem>
           ))}
         </ol>
       </SortableList>
-      {canEdit && <NewStep testCase={testCase} onAdded={invalidate} />}
+      {canEdit && <NewStep testCase={testCase} template={template} onAdded={invalidate} />}
       {!canEdit && steps.length === 0 && <p className="text-sm text-ink-faint">No steps yet.</p>}
     </div>
   );
 }
 
-function StepRow({ step, index, handle, onChanged }: { step: Step; index: number; handle: React.ReactNode; onChanged: () => void }) {
+/** Step grid columns: drag handle, number, one per template field, actions. */
+function stepGrid(template: TemplateDefinition) {
+  return template.stepFields.length === 3
+    ? 'md:grid-cols-[1.5rem_1.5rem_1fr_1fr_1fr_3.5rem]'
+    : 'md:grid-cols-[1.5rem_1.5rem_1fr_1fr_3.5rem]';
+}
+
+function StepRow({
+  step,
+  index,
+  template,
+  handle,
+  onChanged,
+}: {
+  step: Step;
+  index: number;
+  template: TemplateDefinition;
+  handle: React.ReactNode;
+  onChanged: () => void;
+}) {
   const canEdit = useCan('editContent');
   const queryClient = useQueryClient();
   const update = useMutation({
-    mutationFn: (patch: Partial<Pick<Step, 'action' | 'details' | 'expectedResult'>>) => api.patch<Step>(`/steps/${step.id}`, patch),
+    mutationFn: (patch: Record<string, string | null>) => api.patch<Step>(`/steps/${step.id}`, patch),
     onSuccess: onChanged,
   });
   const fileKey = keys.attachments('step', step.id);
@@ -365,35 +385,23 @@ function StepRow({ step, index, handle, onChanged }: { step: Step; index: number
 
   return (
     <div className="px-2 py-2">
-      <div className="grid grid-cols-[1.5rem_1.5rem_1fr] items-start gap-x-3 gap-y-2 md:grid-cols-[1.5rem_1.5rem_1fr_1fr_1fr_3.5rem]">
+      <div className={`grid grid-cols-[1.5rem_1.5rem_1fr] items-start gap-x-3 gap-y-2 ${stepGrid(template)}`}>
         <span className="pt-0.5">{handle}</span>
         <span className="pt-1 text-right text-sm tabular-nums text-ink-faint" title={step.ref ?? undefined}>{index + 1}.</span>
-        <div className="text-sm">
-          {step.ref && <span className="mb-0.5 block text-xs font-medium text-ink-muted">{step.ref}</span>}
-          <InlineEdit ariaLabel={`step ${index + 1} action`} multiline value={step.action} disabled={!canEdit} onSave={(action) => update.mutateAsync({ action })} />
-        </div>
-        <div className="col-start-3 text-sm text-ink-soft md:col-start-auto">
-          <span className="text-xs text-ink-muted md:hidden">Details to validate: </span>
-          <InlineEdit
-            ariaLabel={`step ${index + 1} details to validate`}
-            multiline
-            placeholder="Add details to validate"
-            value={step.details ?? ''}
-            disabled={!canEdit}
-            onSave={(details) => update.mutateAsync({ details: details || null })}
-          />
-        </div>
-        <div className="col-start-3 text-sm text-ink-soft md:col-start-auto">
-          <span className="text-xs text-ink-muted md:hidden">Expected: </span>
-          <InlineEdit
-            ariaLabel={`step ${index + 1} expected result`}
-            multiline
-            placeholder="Add expected result"
-            value={step.expectedResult ?? ''}
-            disabled={!canEdit}
-            onSave={(expectedResult) => update.mutateAsync({ expectedResult: expectedResult || null })}
-          />
-        </div>
+        {template.stepFields.map((f, n) => (
+          <div key={f.key} className={`text-sm ${n === 0 ? '' : 'col-start-3 text-ink-soft md:col-start-auto'}`}>
+            {n === 0 && step.ref && <span className="mb-0.5 block text-xs font-medium text-ink-muted">{step.ref}</span>}
+            {n > 0 && <span className="text-xs text-ink-muted md:hidden">{f.label}: </span>}
+            <InlineEdit
+              ariaLabel={`step ${index + 1} ${f.label}`}
+              multiline
+              placeholder={`Add ${f.label}`}
+              value={step[f.key] ?? ''}
+              disabled={!canEdit}
+              onSave={(value) => update.mutateAsync(f.key === 'action' ? { action: value } : { [f.key]: value || null })}
+            />
+          </div>
+        ))}
         {canEdit && (
           <div className="col-start-3 md:col-start-auto md:text-right">
             <ConfirmButton
@@ -432,37 +440,45 @@ function StepRow({ step, index, handle, onChanged }: { step: Step; index: number
   );
 }
 
-function NewStep({ testCase, onAdded }: { testCase: TestCase; onAdded: () => void }) {
-  const [action, setAction] = useState('');
-  const [details, setDetails] = useState('');
-  const [expected, setExpected] = useState('');
+function NewStep({ testCase, template, onAdded }: { testCase: TestCase; template: TemplateDefinition; onAdded: () => void }) {
+  const empty = () => Object.fromEntries(template.stepFields.map((f) => [f.key, ''])) as Record<string, string>;
+  const [values, setValues] = useState<Record<string, string>>(empty);
   const add = useMutation({
     mutationFn: () =>
-      api.post<Step>(`/test-cases/${testCase.id}/steps`, { action, details: details || null, expectedResult: expected || null }),
+      api.post<Step>(`/test-cases/${testCase.id}/steps`, {
+        action: values.action,
+        details: values.details || null,
+        expectedResult: values.expectedResult || null,
+      }),
     onSuccess: () => {
-      setAction('');
-      setDetails('');
-      setExpected('');
+      setValues(empty());
       onAdded();
-      document.getElementById(`new-step-${testCase.id}`)?.focus();
+      document.getElementById(`new-step-action-${testCase.id}`)?.focus();
     },
   });
+  const cols = template.stepFields.length === 3 ? 'md:grid-cols-[1fr_1fr_1fr_auto]' : 'md:grid-cols-[1fr_1fr_auto]';
   return (
     <form
-      className="mt-3 grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto] md:pl-[3.75rem]"
+      className={`mt-3 grid gap-2 md:pl-[3.75rem] ${cols}`}
       onSubmit={(e) => {
         e.preventDefault();
-        if (action.trim()) add.mutate();
+        if (values.action?.trim()) add.mutate();
       }}
     >
-      <label className="sr-only" htmlFor={`new-step-${testCase.id}`}>New step action</label>
-      <input id={`new-step-${testCase.id}`} className="field" placeholder="Question or test description" value={action} onChange={(e) => setAction(e.target.value)} />
-      <label className="sr-only" htmlFor={`new-step-det-${testCase.id}`}>Details to validate</label>
-      <input id={`new-step-det-${testCase.id}`} className="field" placeholder="Details to validate" value={details} onChange={(e) => setDetails(e.target.value)} />
-      <label className="sr-only" htmlFor={`new-step-exp-${testCase.id}`}>Expected result</label>
-      <input id={`new-step-exp-${testCase.id}`} className="field" placeholder="Expected result" value={expected} onChange={(e) => setExpected(e.target.value)} />
-      <button className="btn-secondary" disabled={add.isPending || !action.trim()}>Add step</button>
-      {add.error ? <ErrorNote error={add.error} className="md:col-span-4" /> : null}
+      {template.stepFields.map((f) => (
+        <span key={f.key}>
+          <label className="sr-only" htmlFor={`new-step-${f.key}-${testCase.id}`}>{f.label}</label>
+          <input
+            id={`new-step-${f.key}-${testCase.id}`}
+            className="field"
+            placeholder={f.label}
+            value={values[f.key] ?? ''}
+            onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+          />
+        </span>
+      ))}
+      <button className="btn-secondary" disabled={add.isPending || !values.action?.trim()}>Add step</button>
+      {add.error ? <ErrorNote error={add.error} className="md:col-span-full" /> : null}
     </form>
   );
 }
@@ -616,15 +632,10 @@ function StartRunModal({ suite, initial, onClose }: { suite: Suite; initial: 'al
 
 // CSV upload -------------------------------------------------------------------------
 
-const TEMPLATES = [
-  { file: 'UAT_template.csv', label: 'UAT' },
-  { file: 'Regression_template.csv', label: 'Regression' },
-  { file: 'SIT_template.csv', label: 'SIT' },
-];
-
 /** Upload a CSV of test cases into this test area: check what it contains first, then add them. */
 function ImportModal({ suite, onClose }: { suite: Suite; onClose: () => void }) {
   const queryClient = useQueryClient();
+  const template = templateFor(suite.testType);
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
 
@@ -673,16 +684,14 @@ function ImportModal({ suite, onClose }: { suite: Suite; onClose: () => void }) 
       {!result ? (
         <div className="space-y-4">
           <p className="text-sm text-ink-muted">
-            Use one of the templates and keep its first row as it is. Each row is a step, grouped into test cases by ID: REPORT1.0 and
-            REPORT1.1 are steps 1 and 2 of test case REPORT1. Results columns are ignored, because results are recorded here during a run.
+            This is a {template.label} test area, so use the {template.label} template and keep its first row as it is. Each row is a
+            step, grouped into test cases by ID: REPORT1.0 and REPORT1.1 are steps 1 and 2 of test case REPORT1.
           </p>
-          <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            <span className="text-ink-muted">Templates:</span>
-            {TEMPLATES.map((t) => (
-              <a key={t.file} className="link" href={`/templates/${t.file}`} download={t.file}>
-                {t.label}
-              </a>
-            ))}
+          <p className="text-sm">
+            <a className="link" href={`/templates/${template.file}`} download={template.file}>
+              Download the {template.label} template
+            </a>
+            <span className="text-ink-muted"> ({template.columns.join(', ')})</span>
           </p>
           <div>
             <label className="label" htmlFor="import-file">CSV file</label>
@@ -702,7 +711,7 @@ function ImportModal({ suite, onClose }: { suite: Suite; onClose: () => void }) 
           <p className="text-sm">
             {done
               ? `Added ${plural(result.created, 'test case')}${result.skipped ? `. ${plural(result.skipped, 'test case')} already here ${result.skipped === 1 ? 'was' : 'were'} skipped` : ''}.`
-              : `${file?.name} contains ${plural(result.testCases.length, 'test case')} (${result.format === 'sit' ? 'SIT' : 'UAT/Regression'} layout).`}
+              : `${file?.name} contains ${plural(result.testCases.length, 'test case')}.`}
           </p>
           <ul className="max-h-64 divide-y divide-line overflow-auto rounded-md border border-line text-sm">
             {result.testCases.map((c, i) => (
@@ -729,25 +738,19 @@ function ImportModal({ suite, onClose }: { suite: Suite; onClose: () => void }) 
   );
 }
 
-/** The template fields on a test case. Empty ones are hidden from people who can't edit them. */
+/** The template's fields on a test case. Empty ones are hidden from people who can't edit them. */
 function TestCaseFields({
   testCase,
+  template,
   canEdit,
   onSave,
 }: {
   testCase: TestCase;
+  template: TemplateDefinition;
   canEdit: boolean;
   onSave: (patch: Record<string, string | null>) => Promise<unknown>;
 }) {
-  const fields: Array<{ key: 'ref' | (typeof TEST_CASE_FIELD_KEYS)[number]; label: string; multiline: boolean }> = [
-    { key: 'ref', label: 'Test case ID', multiline: false },
-    ...TEST_CASE_FIELD_KEYS.map((key) => ({
-      key,
-      label: TEST_CASE_FIELD_LABELS[key],
-      multiline: key === 'description' || key === 'precondition',
-    })),
-  ];
-  const shown = fields.filter((f) => canEdit || testCase[f.key]);
+  const shown = template.caseFields.filter((f) => canEdit || testCase[f.key]);
   if (shown.length === 0) return null;
   return (
     <dl className="mb-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[9rem_1fr]">
@@ -756,9 +759,9 @@ function TestCaseFields({
           <dt className="pt-0.5 text-ink-muted">{f.label}</dt>
           <dd className="min-w-0 text-ink-soft">
             <InlineEdit
-              ariaLabel={`${f.label.toLowerCase()} of ${testCase.name}`}
+              ariaLabel={`${f.label} of ${testCase.name}`}
               multiline={f.multiline}
-              placeholder={`Add ${f.label.toLowerCase()}`}
+              placeholder={`Add ${f.label}`}
               value={testCase[f.key] ?? ''}
               disabled={!canEdit}
               onSave={(value) => onSave({ [f.key]: value || null })}

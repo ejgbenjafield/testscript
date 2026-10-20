@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { parseImport, type ImportResult } from '@testscript/shared';
+import { importFormatFor, parseImport, templateFor, type ImportResult } from '@testscript/shared';
 import { one, query, tx } from '../db';
 import { audit, currentUser, requireResource } from '../authz';
 import { badRequest, HttpError } from '../errors';
@@ -22,6 +22,15 @@ importsRouter.post('/suites/:suiteId/import', upload.single('file'), async (req,
 
   const parsed = parseImport(req.file.buffer.toString('utf8'));
   if (parsed.error) throw new HttpError(422, 'unreadable_file', parsed.error);
+  const suite = await one('SELECT test_type FROM suites WHERE id = $1', [s.id]);
+  const template = templateFor(suite.test_type);
+  if (parsed.format !== importFormatFor(template.type)) {
+    throw new HttpError(
+      422,
+      'wrong_template',
+      `This is a ${template.label} test area, but the file uses the ${parsed.format === 'sit' ? 'SIT' : 'UAT/Regression'} layout. Use the ${template.label} template.`,
+    );
+  }
 
   // Test cases already in this test area (matched by their ID, e.g. REPORT1) are skipped,
   // so uploading the same file twice doesn't create duplicates.

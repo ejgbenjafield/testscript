@@ -49,6 +49,7 @@ function mapSuite(r: any): Suite {
     projectName: r.project_name,
     number: r.number,
     areaId: r.area_id,
+    testType: r.test_type,
     projectNumber: r.project_number,
     ref: scriptRef(r.project_number, r.number),
     name: r.name,
@@ -260,10 +261,10 @@ contentRouter.post('/projects/:projectId/suites', async (req, res) => {
     await db.query('SELECT 1 FROM projects WHERE id = $1 FOR UPDATE', [p.id]);
     const name = await usableArea(db, p.org_id, p.id, input.areaId);
     const row = await one(
-      `INSERT INTO suites (org_id, project_id, area_id, number, name, description, created_by)
-       VALUES ($1, $2, $3, (SELECT COALESCE(max(number), 0) + 1 FROM suites WHERE project_id = $2), $4, $5, $6)
+      `INSERT INTO suites (org_id, project_id, area_id, test_type, number, name, description, created_by)
+       VALUES ($1, $2, $3, $7, (SELECT COALESCE(max(number), 0) + 1 FROM suites WHERE project_id = $2), $4, $5, $6)
        RETURNING id`,
-      [p.org_id, p.id, input.areaId, name, input.description ?? null, user.id],
+      [p.org_id, p.id, input.areaId, name, input.description ?? null, user.id, input.testType],
       db,
     );
     await db.query('UPDATE projects SET updated_at = now() WHERE id = $1', [p.id]);
@@ -283,7 +284,7 @@ contentRouter.patch('/suites/:suiteId', async (req, res) => {
   const input = parse(updateSuiteSchema, req.body);
   const suite = await tx(async (db) => {
     const before = await one(
-      'SELECT name, description, area_id AS "areaId", project_id FROM suites WHERE id = $1 FOR UPDATE',
+      'SELECT name, description, area_id AS "areaId", test_type AS "testType", project_id FROM suites WHERE id = $1 FOR UPDATE',
       [s.id],
       db,
     );
@@ -293,8 +294,9 @@ contentRouter.patch('/suites/:suiteId', async (req, res) => {
     }
     await db.query(
       `UPDATE suites SET area_id = COALESCE($2, area_id), name = COALESCE($3, name),
-              description = CASE WHEN $5 THEN $4 ELSE description END, updated_at = now() WHERE id = $1`,
-      [s.id, name ? input.areaId : null, name, input.description ?? null, input.description !== undefined],
+              description = CASE WHEN $5 THEN $4 ELSE description END,
+              test_type = COALESCE($6, test_type), updated_at = now() WHERE id = $1`,
+      [s.id, name ? input.areaId : null, name, input.description ?? null, input.description !== undefined, input.testType ?? null],
     );
     await audit(req, { orgId: s.org_id, action: 'suite.updated', entityType: 'suite', entityId: s.id, diff: changed(before, { ...input, ...(name ? { name } : {}) }) }, db);
     return getSuite(s.id, db);

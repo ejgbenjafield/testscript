@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Page, Project, Suite } from '@testscript/shared';
+import { TEST_TYPES, templateFor, type Page, type Project, type Suite, type TestType } from '@testscript/shared';
 import { api } from '../lib/api';
 import { keys, useAreas, useCan, useOrg } from '../lib/queries';
 import { plural, timeAgo } from '../lib/format';
 import { ConfirmButton, EmptyState, ErrorNote, InlineEdit, Loading, Modal, toast } from '../components/ui';
-import { ResultStrip, RunStatusBadge } from '../components/results';
+import { ResultStrip, RunStatusBadge, TestTypeBadge } from '../components/results';
 
 export function ProjectPage() {
   const { projectId = '' } = useParams();
@@ -106,6 +106,7 @@ export function ProjectPage() {
                     <p className="font-semibold">
                       <span className="mr-2 tabular-nums text-ink-faint">{s.ref}</span>
                       {s.name}
+                      <TestTypeBadge type={s.testType} className="ml-2 align-middle" />
                     </p>
                     <p className="mt-0.5 truncate text-sm text-ink-muted">
                       {plural(s.testCaseCount, 'test case')}
@@ -140,6 +141,7 @@ function NewSuiteModal({ projectId, open, onClose }: { projectId: string; open: 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [areaId, setAreaId] = useState('');
+  const [testType, setTestType] = useState<TestType>('uat');
   const [description, setDescription] = useState('');
   const areas = useAreas(open);
   const suites = queryClient.getQueryData<Page<Suite>>(keys.suites(projectId));
@@ -148,12 +150,13 @@ function NewSuiteModal({ projectId, open, onClose }: { projectId: string; open: 
   const available = (areas.data?.data ?? []).filter((a) => !used.has(a.id));
 
   const create = useMutation({
-    mutationFn: () => api.post<Suite>(`/projects/${projectId}/suites`, { areaId, description: description || null }),
+    mutationFn: () => api.post<Suite>(`/projects/${projectId}/suites`, { areaId, testType, description: description || null }),
     onSuccess: (s) => {
       queryClient.invalidateQueries({ queryKey: keys.suites(projectId) });
       queryClient.invalidateQueries({ queryKey: keys.dashboard(org.id) });
       queryClient.invalidateQueries({ queryKey: keys.areas(org.id) });
       setAreaId('');
+      setTestType('uat');
       setDescription('');
       onClose();
       navigate(`/${org.slug}/suites/${s.id}`);
@@ -194,6 +197,28 @@ function NewSuiteModal({ projectId, open, onClose }: { projectId: string; open: 
             </select>
           )}
         </div>
+        <fieldset>
+          <legend className="label">Template</legend>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {TEST_TYPES.map((t) => {
+              const tpl = templateFor(t);
+              return (
+                <label
+                  key={t}
+                  htmlFor={`suite-type-${t}`}
+                  className={`cursor-pointer rounded-md border p-3 text-sm ${testType === t ? 'border-cobalt-600 bg-cobalt-50' : 'border-line hover:bg-canvas'}`}
+                >
+                  <span className="flex items-center gap-2 font-semibold">
+                    <input id={`suite-type-${t}`} type="radio" name="suite-type" className="accent-cobalt-600" checked={testType === t} onChange={() => setTestType(t)} />
+                    {tpl.label}
+                  </span>
+                  <span className="mt-1 block text-xs text-ink-muted">{tpl.summary}</span>
+                </label>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-xs text-ink-muted">Fields: {templateFor(testType).columns.join(', ')}</p>
+        </fieldset>
         <div>
           <label className="label" htmlFor="suite-desc">Description (optional)</label>
           <textarea id="suite-desc" className="field" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />

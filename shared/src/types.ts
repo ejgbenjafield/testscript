@@ -1,6 +1,7 @@
 import type { Role } from './roles';
 import type { RunStats, RunStatus, StepResult } from './status';
 import type { AttachmentEntityType } from './schemas';
+import type { TestType } from './testTypes';
 
 export interface Page<T> {
   data: T[];
@@ -99,6 +100,8 @@ export interface Suite {
   projectName?: string;
   /** The area this test area belongs to; `name` is that area's name. */
   areaId: string;
+  /** UAT, Regression or SIT: decides the fields its test cases use. */
+  testType: TestType;
   /** The test area's number within its project: the "2" in 1.2. */
   number: number;
   projectNumber: number;
@@ -213,6 +216,7 @@ export interface RunResult {
 export interface RunDetail extends RunSummary {
   suiteName: string;
   suiteRef: string;
+  testType: TestType;
   projectId: string;
   projectName: string;
   testCases: RunTestCase[];

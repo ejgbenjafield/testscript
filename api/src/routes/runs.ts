@@ -86,7 +86,7 @@ runsRouter.get('/suites/:suiteId/runs', async (req, res) => {
 
 async function loadRun(runId: string): Promise<RunDetail> {
   const run = await one(
-    `SELECT x.*, s.name AS suite_name, s.number AS suite_number, p.number AS project_number,
+    `SELECT x.*, s.name AS suite_name, s.number AS suite_number, s.test_type, p.number AS project_number,
             p.id AS project_id, p.name AS project_name
        FROM (${RUN_SUMMARY_SQL} WHERE r.id = $1) x
        JOIN suites s ON s.id = x.suite_id JOIN projects p ON p.id = s.project_id`,
@@ -119,6 +119,7 @@ async function loadRun(runId: string): Promise<RunDetail> {
     ...mapRunSummary(run),
     suiteName: run.suite_name,
     suiteRef: scriptRef(run.project_number, run.suite_number),
+    testType: run.test_type,
     projectId: run.project_id,
     projectName: run.project_name,
     testCases,

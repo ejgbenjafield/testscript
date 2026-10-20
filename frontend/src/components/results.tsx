@@ -1,5 +1,5 @@
 import type { RunStats, RunStatus, TestCaseStatus } from '@testscript/shared';
-import { formatPassRate } from '@testscript/shared';
+import { formatPassRate, templateFor, type TestType } from '@testscript/shared';
 import { formatDate } from '../lib/format';
 
 const SEGMENTS = [
@@ -93,4 +93,19 @@ const RUN_STATUS: Record<RunStatus, { label: string; className: string }> = {
 export function RunStatusBadge({ status }: { status: RunStatus }) {
   const s = RUN_STATUS[status];
   return <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${s.className}`}>{s.label}</span>;
+}
+
+const TEST_TYPE_STYLE: Record<TestType, string> = {
+  uat: 'bg-cobalt-50 text-cobalt-700',
+  regression: 'bg-skip-soft text-skip',
+  sit: 'bg-pass-soft text-pass',
+};
+
+/** UAT, Regression or SIT label for a test area. */
+export function TestTypeBadge({ type, className = '' }: { type: TestType; className?: string }) {
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-xs font-semibold ${TEST_TYPE_STYLE[type]} ${className}`}>
+      {templateFor(type).label}
+    </span>
+  );
 }

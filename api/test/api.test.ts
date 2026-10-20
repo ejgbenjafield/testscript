@@ -241,17 +241,17 @@ describe('invitations and roles', () => {
       const searchArea = await area('Search');
       const basketArea = await area('Basket');
 
-      const suite = await owner.post(`/v1/projects/${projectId}/suites`, { areaId: checkoutArea });
+      const suite = await owner.post(`/v1/projects/${projectId}/suites`, { areaId: checkoutArea, testType: 'uat' });
       expect(suite.status).toBe(201);
-      expect(suite.body).toMatchObject({ ref: '1.1', name: 'Checkout', areaId: checkoutArea });
+      expect(suite.body).toMatchObject({ ref: '1.1', name: 'Checkout', areaId: checkoutArea, testType: 'uat' });
       suiteId = suite.body.id;
       // An area can only be used once in a project.
-      expect((await owner.post(`/v1/projects/${projectId}/suites`, { areaId: checkoutArea })).status).toBe(409);
-      const second = await owner.post(`/v1/projects/${projectId}/suites`, { areaId: searchArea });
+      expect((await owner.post(`/v1/projects/${projectId}/suites`, { areaId: checkoutArea, testType: 'uat' })).status).toBe(409);
+      const second = await owner.post(`/v1/projects/${projectId}/suites`, { areaId: searchArea, testType: 'regression' });
       expect(second.body.ref).toBe('1.2');
       await owner.delete(`/v1/suites/${second.body.id}`);
       // Numbers aren't reused after a delete.
-      const third = await owner.post(`/v1/projects/${projectId}/suites`, { areaId: basketArea });
+      const third = await owner.post(`/v1/projects/${projectId}/suites`, { areaId: basketArea, testType: 'sit' });
       expect(third.body.ref).toBe('1.3');
       await owner.delete(`/v1/suites/${third.body.id}`);
 
@@ -314,6 +314,11 @@ describe('invitations and roles', () => {
 
       expect((await tester.uploadTo(`/v1/suites/${suiteId}/import`, Buffer.from(csv), 'uat.csv', 'text/csv')).status).toBe(403);
       expect((await owner.uploadTo(`/v1/suites/${suiteId}/import`, Buffer.from('a,b\n1,2'), 'x.csv', 'text/csv')).status).toBe(422);
+      // A UAT test area won't take a SIT file.
+      const sit = 'Test Case ID,System,Import via,Import Definition,Test Description,Expected Results\nS1.0,SFTP,SFTP,Def,Check,Ok\n';
+      const wrong = await owner.uploadTo(`/v1/suites/${suiteId}/import`, Buffer.from(sit), 'sit.csv', 'text/csv');
+      expect(wrong.status).toBe(422);
+      expect(wrong.body.error.code).toBe('wrong_template');
 
       // Tidy up so later tests see the original three test cases.
       for (const t of list.body.data.filter((x: any) => x.ref)) await owner.delete(`/v1/test-cases/${t.id}`);
@@ -337,7 +342,7 @@ describe('invitations and roles', () => {
       await owner.patch(`/v1/orgs/${orgId}/areas/${basket.id}`, { archived: true });
       expect((await owner.get(`/v1/orgs/${orgId}/areas`)).body.data.map((a: any) => a.name)).not.toContain('Basket');
       expect((await owner.get(`/v1/orgs/${orgId}/areas?includeArchived=true`)).body.data).toHaveLength(3);
-      expect((await owner.post(`/v1/projects/${projectId}/suites`, { areaId: basket.id })).status).toBe(400);
+      expect((await owner.post(`/v1/projects/${projectId}/suites`, { areaId: basket.id, testType: 'uat' })).status).toBe(400);
       expect((await outsider.get(`/v1/orgs/${orgId}/areas`)).status).toBe(404);
     });
 

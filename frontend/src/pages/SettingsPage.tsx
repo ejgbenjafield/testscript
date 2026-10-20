@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Area, Org, Page } from '@testscript/shared';
+import { TEST_TYPES, templateFor, type Area, type Org, type Page } from '@testscript/shared';
 import { api, errorMessage } from '../lib/api';
 import { keys, useCan, useOrg } from '../lib/queries';
 import { ErrorNote, FullPageMessage, InlineEdit, Loading, toast } from '../components/ui';
@@ -25,6 +25,7 @@ export function SettingsPage() {
         <p className="mt-1 text-ink-muted">Changes here apply across the whole organisation.</p>
       </div>
       <Areas />
+      <Templates />
       <OrgDetails />
     </div>
   );
@@ -178,6 +179,37 @@ function OrgDetails() {
         </div>
         {save.error ? <ErrorNote error={save.error} className="sm:col-span-2" /> : null}
       </form>
+    </section>
+  );
+}
+
+/** The three test area templates and the fields each one gives its test cases. */
+function Templates() {
+  return (
+    <section>
+      <h2 className="text-lg font-semibold">Templates</h2>
+      <p className="mt-1 max-w-2xl text-sm text-ink-muted">
+        Each test area uses one of these, chosen when it's created. The template decides which fields its test cases and steps have,
+        and which CSV file can be uploaded into it.
+      </p>
+      <div className="mt-4 grid gap-4 md:grid-cols-3">
+        {TEST_TYPES.map((t) => {
+          const tpl = templateFor(t);
+          return (
+            <div key={t} className="panel p-4">
+              <h3 className="font-semibold">{tpl.label}</h3>
+              <p className="mt-1 text-sm text-ink-muted">{tpl.summary}</p>
+              <p className="mt-3 text-xs font-medium text-ink-muted">Test case fields</p>
+              <p className="text-sm">Test Case Name, {tpl.caseFields.map((f) => f.label).join(', ')}</p>
+              <p className="mt-2 text-xs font-medium text-ink-muted">Step fields</p>
+              <p className="text-sm">{tpl.stepFields.map((f) => f.label).join(', ')}</p>
+              <a className="link mt-3 inline-block text-sm" href={`/templates/${tpl.file}`} download={tpl.file}>
+                Download CSV template
+              </a>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }

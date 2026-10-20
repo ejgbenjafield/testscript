@@ -9,6 +9,9 @@ import {
   type RunTestCase,
   type SnapshotStep,
   type StepResult,
+  templateFor,
+  type StepFieldKey,
+  type TemplateDefinition,
 } from '@testscript/shared';
 import { api, errorMessage } from '../lib/api';
 import { keys, useCan, useMe, useOrg } from '../lib/queries';
@@ -187,7 +190,7 @@ function CasePanel({
         <CaseStatusBadge status={status} />
       </div>
       {testCase.description && <p className="mt-1 max-w-[70ch] whitespace-pre-wrap text-ink-muted">{testCase.description}</p>}
-      <CaseFields testCase={testCase} />
+      <CaseFields testCase={testCase} template={templateFor(run.testType)} />
       <ol className="mt-5 space-y-3">
         {testCase.steps.map((step, i) => (
           <StepCard
@@ -231,6 +234,9 @@ function StepCard({
   result: RunResult | undefined;
   editable: boolean;
 }) {
+  // Column names from the test area's template, e.g. "Question" or "Test Description".
+  const template = templateFor(run.testType);
+  const label = (key: StepFieldKey, fallback: string) => template.stepFields.find((f) => f.key === key)?.label ?? fallback;
   const queryClient = useQueryClient();
   const me = useMe();
   const key = keys.run(run.id);
@@ -294,17 +300,17 @@ function StepCard({
         <span className="text-lg font-semibold tabular-nums text-ink-faint">{index + 1}</span>
         <div className={`grid gap-3 ${step.details ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
           <div>
-            <p className="text-xs font-medium text-ink-muted">Do this{step.ref && <span className="ml-2 text-ink-faint">{step.ref}</span>}</p>
+            <p className="text-xs font-medium text-ink-muted">{label('action', 'Do this')}{step.ref && <span className="ml-2 text-ink-faint">{step.ref}</span>}</p>
             <p className="mt-0.5 whitespace-pre-wrap">{step.action}</p>
           </div>
           {step.details && (
             <div>
-              <p className="text-xs font-medium text-ink-muted">Details to validate</p>
+              <p className="text-xs font-medium text-ink-muted">{label('details', 'Details to Validate')}</p>
               <p className="mt-0.5 whitespace-pre-wrap text-ink-soft">{step.details}</p>
             </div>
           )}
           <div>
-            <p className="text-xs font-medium text-ink-muted">Expect this</p>
+            <p className="text-xs font-medium text-ink-muted">{label('expectedResult', 'Expected result')}</p>
             <p className="mt-0.5 whitespace-pre-wrap text-ink-soft">{step.expectedResult || <span className="text-ink-faint">No expected result given</span>}</p>
           </div>
         </div>
@@ -379,15 +385,12 @@ function StepCard({
   );
 }
 
-/** Pre-condition, system and import details for the test case, as they were when the run started. */
-function CaseFields({ testCase }: { testCase: RunTestCase }) {
-  const fields = [
-    { label: 'Test case ID', value: testCase.ref },
-    { label: 'Pre-condition', value: testCase.precondition },
-    { label: 'System', value: testCase.system },
-    { label: 'Import via', value: testCase.importVia },
-    { label: 'Import definition', value: testCase.importDefinition },
-  ].filter((f) => f.value);
+/** The template's test case fields, as they were when the run started. The description is shown above. */
+function CaseFields({ testCase, template }: { testCase: RunTestCase; template: TemplateDefinition }) {
+  const fields = template.caseFields
+    .filter((f) => f.key !== 'description')
+    .map((f) => ({ label: f.label, value: testCase[f.key] }))
+    .filter((f) => f.value);
   if (fields.length === 0) return null;
   return (
     <dl className="mt-3 grid max-w-3xl gap-x-6 gap-y-1 rounded-md bg-canvas px-4 py-3 text-sm sm:grid-cols-[9rem_1fr]">

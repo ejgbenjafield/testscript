@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ROLES } from './roles';
 import { ALLOWED_MIME_TYPES } from './files';
 import { STEP_RESULTS } from './status';
+import { TEST_TYPES } from './testTypes';
 
 const name = z.string().trim().min(1, 'Required').max(200);
 const description = z.string().max(10_000).optional().nullable();
@@ -50,7 +51,7 @@ export const createProjectSchema = z.object({ name, description });
 export const updateProjectSchema = createProjectSchema.partial();
 
 /** A test area (a "suite" in the code) takes its name from the organisation's list of areas. */
-export const createSuiteSchema = z.object({ areaId: uuid, description });
+export const createSuiteSchema = z.object({ areaId: uuid, testType: z.enum(TEST_TYPES), description });
 export const updateSuiteSchema = createSuiteSchema.partial();
 
 export const createAreaSchema = z.object({ name: z.string().trim().min(1, 'Required').max(120) });
