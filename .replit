@@ -16,3 +16,34 @@ run = ["sh", "-c", "PORT=5000 npm start"]
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[objectStorage]
+defaultBucketID = "replit-objstore-3c38d8c0-24cc-4eff-8d7a-7791255f2af8"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run replit:dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"

@@ -1,0 +1,1 @@
+- [Workspace test-runner upgrades](workspace-test-runner-upgrades.md) — update shared and package-specific Vitest dependencies together so npm doesn't keep fetching a blocked version.
