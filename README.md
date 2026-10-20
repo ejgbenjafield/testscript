@@ -110,6 +110,7 @@ The API suite (`api/test/api.test.ts`) covers sign-in, organisations, invitation
 
 - **Test areas and reference numbers.** What the spec calls a *suite* is shown as a **test area** on the website (the code and API still say `suite`). Its name is picked from the organisation's list of areas, which admins maintain under **Settings**; an area can be used in many projects but once per project, and renaming it renames it everywhere. Projects are numbered 1, 2, 3 within an organisation and test areas 1.1, 1.2 within their project. Numbers are assigned automatically and never reused.
 - **Running part of a test area.** A run can include every test case, or just the ones you tick (or a single one, from its **Run** button).
+- **CSV upload.** On a test area, **Upload CSV** adds test cases from the UAT, Regression or SIT template (downloadable from the same dialog, and in `frontend/public/templates/`). In UAT and Regression files each row is a step, grouped into test cases by ID (REPORT1.0, REPORT1.1 → steps 1 and 2 of test case REPORT1); in SIT files each row is a test case and its numbered lines become steps. The file is checked first and nothing is saved until you confirm; test cases whose ID is already in the test area are skipped, so re-uploading is safe. Result columns (Actual Results, Pass/Fail, Test Performer, Comments) are ignored because results are recorded in the app. IDs are kept on test cases and steps and shown alongside them.
 - **Members and Settings.** **Members** is a grid of everyone in the organisation and everyone invited, with roles and actions. **Settings** (admins only) holds organisation-wide options: the area list and the organisation's name and address.
 - **Replit instead of Google Cloud.** Replit PostgreSQL replaces Cloud SQL, Replit Object Storage (backed by Google Cloud Storage) replaces the GCS bucket, Replit Secrets replaces Secret Manager, and Replit Autoscale replaces Cloud Run. One server serves the website and the API, so there's no CORS to configure.
 - **Tenant isolation.** `org_id` is on every content table, and composite foreign keys (`(suite_id, org_id) → suites(id, org_id)`) make cross-organisation references impossible in the database itself. Every route finds the organisation that owns what it touches and checks the caller's role there (`api/src/authz.ts`). Non-members get **404**, not 403, so other tenants' ids can't be probed.
@@ -146,6 +147,7 @@ PATCH/DELETE     /steps/:stepId
 POST   /suites/:suiteId/runs                  GET /suites/:suiteId/runs
 GET    /runs/:runId                           PATCH /runs/:runId  {status: completed|abandoned}
 POST   /runs/:runId/results                   DELETE /run-results/:resultId
+POST   /suites/:suiteId/import?preview=true (multipart CSV)
 POST   /attachments (multipart)               GET /attachments?entityType&entityId
 GET    /attachments/:id/content?exp&sig       DELETE /attachments/:attachmentId
 ```

@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS test_cases_suite_ref_idx;
+ALTER TABLE steps DROP COLUMN IF EXISTS ref;
+ALTER TABLE test_cases DROP COLUMN IF EXISTS ref;

@@ -50,7 +50,7 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     return;
   }
   if (err?.code === 'LIMIT_FILE_SIZE') {
-    res.status(413).json({ error: { code: 'file_too_large', message: 'Files can be up to 50 MB' } });
+    res.status(413).json({ error: { code: 'file_too_large', message: 'That file is too large to upload' } });
     return;
   }
   if (err?.code === '22P02') {

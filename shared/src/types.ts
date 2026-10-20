@@ -124,6 +124,8 @@ export interface Area {
 export interface Step {
   id: string;
   testCaseId: string;
+  /** ID from an uploaded spreadsheet, e.g. "REPORT1.0". */
+  ref: string | null;
   position: number;
   action: string;
   expectedResult: string | null;
@@ -133,6 +135,8 @@ export interface Step {
 export interface TestCase {
   id: string;
   suiteId: string;
+  /** ID from an uploaded spreadsheet, e.g. "REPORT1". */
+  ref: string | null;
   name: string;
   description: string | null;
   position: number;
@@ -155,6 +159,7 @@ export interface RunSummary {
 
 export interface SnapshotStep {
   id: string;
+  ref?: string | null;
   position: number;
   action: string;
   expectedResult: string | null;
@@ -223,6 +228,17 @@ export interface Dashboard {
   projects: DashboardProject[];
   activeRuns: Array<RunSummary & { suiteName: string; suiteRef: string; projectName: string }>;
   recentRuns: Array<RunSummary & { suiteName: string; suiteRef: string; projectName: string }>;
+}
+
+export interface ImportResult {
+  format: 'uat' | 'sit';
+  /** True when nothing was saved: this is what an upload would do. */
+  preview: boolean;
+  created: number;
+  /** Test cases left out because one with the same ID is already in the test area. */
+  skipped: number;
+  warnings: string[];
+  testCases: Array<{ ref: string | null; name: string; stepCount: number; alreadyExists: boolean }>;
 }
 
 export interface SearchHit {

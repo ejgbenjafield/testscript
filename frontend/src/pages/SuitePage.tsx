@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Attachment, Page, Project, RunDetail, RunSummary, Step, Suite, TestCase } from '@testscript/shared';
+import type { Attachment, ImportResult, Page, Project, RunDetail, RunSummary, Step, Suite, TestCase } from '@testscript/shared';
 import { api, errorMessage, qs } from '../lib/api';
 import { keys, useCan, useOrg } from '../lib/queries';
 import { plural } from '../lib/format';
@@ -22,6 +22,7 @@ export function SuitePage() {
   const [tab, setTab] = useState<'cases' | 'history'>('cases');
   // Which test cases the run dialog starts with selected: 'all', a chosen few, or closed.
   const [starting, setStarting] = useState<'all' | string[] | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const suite = useQuery({ queryKey: keys.suite(suiteId), queryFn: () => api.get<Suite>(`/suites/${suiteId}`) });
   const project = useQuery({
@@ -82,6 +83,11 @@ export function SuitePage() {
               }}
             />
           )}
+          {canEdit && (
+            <button className="btn-secondary" onClick={() => setImporting(true)}>
+              Upload CSV
+            </button>
+          )}
           {canRun && (
             <button className="btn-primary" disabled={s.testCaseCount === 0} onClick={() => setStarting('all')}>
               Start a run
@@ -103,6 +109,7 @@ export function SuitePage() {
       </div>
 
       <StartRunModal suite={s} initial={starting} onClose={() => setStarting(null)} />
+      {importing && <ImportModal suite={s} onClose={() => setImporting(false)} />}
     </div>
   );
 }
@@ -244,6 +251,7 @@ function TestCaseRow({
             <path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.6" />
           </svg>
         </button>
+        {testCase.ref && <span className="shrink-0 text-xs font-medium text-ink-muted">{testCase.ref}</span>}
         <div className="min-w-0 flex-1 font-medium">
           <InlineEdit ariaLabel="test case name" value={testCase.name} disabled={!canEdit} onSave={(name) => update.mutateAsync({ name })} />
         </div>
@@ -366,8 +374,9 @@ function StepRow({ step, index, handle, onChanged }: { step: Step; index: number
     <div className="px-2 py-2">
       <div className="grid grid-cols-[1.5rem_1.5rem_1fr] items-start gap-x-3 gap-y-2 md:grid-cols-[1.5rem_1.5rem_1fr_1fr_3.5rem]">
         <span className="pt-0.5">{handle}</span>
-        <span className="pt-1 text-right text-sm tabular-nums text-ink-faint">{index + 1}.</span>
+        <span className="pt-1 text-right text-sm tabular-nums text-ink-faint" title={step.ref ?? undefined}>{index + 1}.</span>
         <div className="text-sm">
+          {step.ref && <span className="mb-0.5 block text-xs font-medium text-ink-muted">{step.ref}</span>}
           <InlineEdit ariaLabel={`step ${index + 1} action`} multiline value={step.action} disabled={!canEdit} onSave={(action) => update.mutateAsync({ action })} />
         </div>
         <div className="col-start-3 text-sm text-ink-soft md:col-start-auto">
@@ -592,6 +601,122 @@ function StartRunModal({ suite, initial, onClose }: { suite: Suite; initial: 'al
         </fieldset>
         <ErrorNote error={start.error} />
       </form>
+    </Modal>
+  );
+}
+
+// CSV upload -------------------------------------------------------------------------
+
+const TEMPLATES = [
+  { file: 'UAT_template.csv', label: 'UAT' },
+  { file: 'Regression_template.csv', label: 'Regression' },
+  { file: 'SIT_template.csv', label: 'SIT' },
+];
+
+/** Upload a CSV of test cases into this test area: check what it contains first, then add them. */
+function ImportModal({ suite, onClose }: { suite: Suite; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [file, setFile] = useState<File | null>(null);
+  const [result, setResult] = useState<ImportResult | null>(null);
+
+  const send = useMutation({
+    mutationFn: (preview: boolean) => {
+      const form = new FormData();
+      form.set('file', file!, file!.name);
+      return api.upload<ImportResult>(`/suites/${suite.id}/import${preview ? '?preview=true' : ''}`, form);
+    },
+    onSuccess: (r) => {
+      setResult(r);
+      if (!r.preview) {
+        queryClient.invalidateQueries({ queryKey: keys.testCases(suite.id) });
+        queryClient.invalidateQueries({ queryKey: keys.suite(suite.id) });
+        toast.info(`Added ${plural(r.created, 'test case')}`);
+      }
+    },
+  });
+
+  const newCount = result ? result.testCases.filter((c) => !c.alreadyExists).length : 0;
+  const done = result && !result.preview;
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Upload test cases to ${suite.ref} ${suite.name}`}
+      footer={
+        done ? (
+          <button className="btn-primary" onClick={onClose}>Done</button>
+        ) : result ? (
+          <>
+            <button className="btn-secondary" onClick={() => { setResult(null); setFile(null); }}>Choose another file</button>
+            <button className="btn-primary" disabled={send.isPending || newCount === 0} onClick={() => send.mutate(false)}>
+              {newCount === 0 ? 'Nothing new to add' : `Add ${plural(newCount, 'test case')}`}
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="btn-secondary" onClick={onClose}>Cancel</button>
+            <button className="btn-primary" disabled={!file || send.isPending} onClick={() => send.mutate(true)}>Check file</button>
+          </>
+        )
+      }
+    >
+      {!result ? (
+        <div className="space-y-4">
+          <p className="text-sm text-ink-muted">
+            Use one of the templates and keep its first row as it is. In UAT and Regression files each row is a step, grouped into test
+            cases by ID: REPORT1.0 and REPORT1.1 are steps 1 and 2 of test case REPORT1. In SIT files each row is a test case, and its
+            numbered lines become steps. Results columns are ignored, because results are recorded here during a run.
+          </p>
+          <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            <span className="text-ink-muted">Templates:</span>
+            {TEMPLATES.map((t) => (
+              <a key={t.file} className="link" href={`/templates/${t.file}`} download={t.file}>
+                {t.label}
+              </a>
+            ))}
+          </p>
+          <div>
+            <label className="label" htmlFor="import-file">CSV file</label>
+            <input
+              id="import-file"
+              type="file"
+              accept=".csv,text/csv"
+              className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-line-strong file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+            <p className="mt-1 text-xs text-ink-faint">Saved from Excel as CSV (comma separated). Nothing is added until you confirm.</p>
+          </div>
+          <ErrorNote error={send.error} />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm">
+            {done
+              ? `Added ${plural(result.created, 'test case')}${result.skipped ? `. ${plural(result.skipped, 'test case')} already here ${result.skipped === 1 ? 'was' : 'were'} skipped` : ''}.`
+              : `${file?.name} contains ${plural(result.testCases.length, 'test case')} (${result.format === 'sit' ? 'SIT' : 'UAT/Regression'} layout).`}
+          </p>
+          <ul className="max-h-64 divide-y divide-line overflow-auto rounded-md border border-line text-sm">
+            {result.testCases.map((c, i) => (
+              <li key={`${c.ref ?? ''}-${i}`} className={`flex items-center gap-3 px-3 py-2 ${c.alreadyExists ? 'text-ink-faint' : ''}`}>
+                {c.ref && <span className="shrink-0 text-xs font-medium text-ink-muted">{c.ref}</span>}
+                <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                <span className="shrink-0 text-xs">{c.alreadyExists ? 'Already here, skipped' : plural(c.stepCount, 'step')}</span>
+              </li>
+            ))}
+          </ul>
+          {result.warnings.length > 0 && (
+            <div className="rounded-md bg-skip-soft px-3 py-2 text-sm text-ink-soft">
+              <p className="font-medium">Some rows need attention</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                {result.warnings.slice(0, 20).map((w) => <li key={w}>{w}</li>)}
+              </ul>
+              {result.warnings.length > 20 && <p className="mt-1">…and {result.warnings.length - 20} more.</p>}
+            </div>
+          )}
+          <ErrorNote error={send.error} />
+        </div>
+      )}
     </Modal>
   );
 }

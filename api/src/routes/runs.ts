@@ -31,7 +31,7 @@ runsRouter.post('/suites/:suiteId/runs', async (req, res) => {
   const runId = await tx(async (db) => {
     const cases = await query(
       `SELECT t.id, t.name, t.description, t.position,
-              COALESCE(json_agg(json_build_object('id', st.id, 'position', st.position, 'action', st.action,
+              COALESCE(json_agg(json_build_object('id', st.id, 'ref', st.ref, 'position', st.position, 'action', st.action,
                        'expectedResult', st.expected_result) ORDER BY st.position)
                        FILTER (WHERE st.id IS NOT NULL), '[]') AS steps
          FROM test_cases t

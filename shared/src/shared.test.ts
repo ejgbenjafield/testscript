@@ -79,3 +79,27 @@ describe('schemas', () => {
     expect(createOrgSchema.safeParse({ name: 'A', slug: 'acme-qa' }).success).toBe(true);
   });
 });
+
+describe('CSV import', () => {
+  it('groups UAT rows into test cases by ID and orders steps', async () => {
+    const { parseImport } = await import('./csv');
+    const r = parseImport(
+      'Test Case ID,Test Case Name,Question,Expected Result\nA1.1,Case A,"Second, step",ok\nA1.0,Case A,First,ok\nB1.0,Case B,Only,ok\n',
+    );
+    expect(r.format).toBe('uat');
+    expect(r.cases.map((c) => [c.ref, c.steps.map((s) => s.action)])).toEqual([
+      ['A1', ['First', 'Second, step']],
+      ['B1', ['Only']],
+    ]);
+  });
+  it('turns numbered SIT lines into steps and ignores result columns', async () => {
+    const { parseImport } = await import('./csv');
+    const r = parseImport('System,Import Definition,Test Description,Expected Results,Pass/Fail\nSFTP,Def,"Check it.\n1. Do a\n2. Do b",Works,Pass\n');
+    expect(r.format).toBe('sit');
+    expect(r.cases[0].name).toBe('Check it.');
+    expect(r.cases[0].steps).toEqual([
+      { ref: null, action: 'Do a', expectedResult: null },
+      { ref: null, action: 'Do b', expectedResult: 'Works' },
+    ]);
+  });
+});

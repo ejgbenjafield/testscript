@@ -293,7 +293,7 @@ function StepCard({
         <span className="text-lg font-semibold tabular-nums text-ink-faint">{index + 1}</span>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <p className="text-xs font-medium text-ink-muted">Do this</p>
+            <p className="text-xs font-medium text-ink-muted">Do this{step.ref && <span className="ml-2 text-ink-faint">{step.ref}</span>}</p>
             <p className="mt-0.5 whitespace-pre-wrap">{step.action}</p>
           </div>
           <div>

@@ -25,6 +25,8 @@ function as(token: string) {
     patch: (url: string, body?: object) => auth(request(app).patch(url)).send(body ?? {}),
     put: (url: string, body?: object) => auth(request(app).put(url)).send(body ?? {}),
     delete: (url: string) => auth(request(app).delete(url)),
+    uploadTo: (url: string, file: Buffer, filename: string, contentType: string) =>
+      auth(request(app).post(url)).attach('file', file, { filename, contentType }),
     upload: (fields: Record<string, string>, file: Buffer, filename: string, contentType: string) => {
       let r = auth(request(app).post('/v1/attachments'));
       for (const [k, v] of Object.entries(fields)) r = r.field(k, v);
@@ -271,6 +273,44 @@ describe('invitations and roles', () => {
       expect(steps.body.data.map((s: any) => s.action)[0]).toBe('Log in first');
       expect(steps.body.data.map((s: any) => s.position)).toEqual([0, 1, 2]);
       stepIds = steps.body.data.map((s: any) => s.id);
+    });
+
+    it('imports test cases from a CSV file', async () => {
+      const csv = [
+        'Test Case ID,Test Case Name,Description,Pre-condition,Question,Details to Validate,Expected Result,Actual Result,Pass/Fail',
+        'IMP1.1,Imported check,Checks imports,Logged in,Second question?,Look closely,Second ok,,',
+        'IMP1.0,Imported check,Checks imports,Logged in,"First question, with a comma?",,First ok,whatever,Pass',
+        'IMP2.0,Another check,,,Only question?,,Fine,,',
+      ].join('\n');
+      const send = (preview: boolean) =>
+        owner.uploadTo(`/v1/suites/${suiteId}/import${preview ? '?preview=true' : ''}`, Buffer.from(csv), 'uat.csv', 'text/csv');
+
+      const preview = await send(true);
+      expect(preview.status).toBe(200);
+      expect(preview.body).toMatchObject({ format: 'uat', preview: true, created: 0 });
+      expect(preview.body.testCases.map((c: any) => [c.ref, c.stepCount])).toEqual([['IMP1', 2], ['IMP2', 1]]);
+      expect((await owner.get(`/v1/suites/${suiteId}/test-cases`)).body.data).toHaveLength(3);
+
+      const done = await send(false);
+      expect(done.status).toBe(201);
+      expect(done.body.created).toBe(2);
+      const list = await owner.get(`/v1/suites/${suiteId}/test-cases?includeSteps=true`);
+      const imported = list.body.data.find((t: any) => t.ref === 'IMP1');
+      expect(imported.description).toBe('Checks imports\n\nPre-condition: Logged in');
+      expect(imported.steps.map((st: any) => [st.ref, st.action, st.expectedResult])).toEqual([
+        ['IMP1.0', 'First question, with a comma?', 'First ok'],
+        ['IMP1.1', 'Second question?\n\nDetails to validate: Look closely', 'Second ok'],
+      ]);
+
+      // Uploading the same file again doesn't duplicate anything.
+      const again = await send(false);
+      expect(again.body).toMatchObject({ created: 0, skipped: 2 });
+
+      expect((await tester.uploadTo(`/v1/suites/${suiteId}/import`, Buffer.from(csv), 'uat.csv', 'text/csv')).status).toBe(403);
+      expect((await owner.uploadTo(`/v1/suites/${suiteId}/import`, Buffer.from('a,b\n1,2'), 'x.csv', 'text/csv')).status).toBe(422);
+
+      // Tidy up so later tests see the original three test cases.
+      for (const t of list.body.data.filter((x: any) => x.ref)) await owner.delete(`/v1/test-cases/${t.id}`);
     });
 
     it('lets admins maintain the list of areas', async () => {

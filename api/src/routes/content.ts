@@ -64,6 +64,7 @@ function mapStep(r: any): Step {
   return {
     id: r.id,
     testCaseId: r.test_case_id,
+    ref: r.ref ?? null,
     position: r.position,
     action: r.action,
     expectedResult: r.expected_result,
@@ -75,6 +76,7 @@ function mapTestCase(r: any, steps?: Step[]): TestCase {
   return {
     id: r.id,
     suiteId: r.suite_id,
+    ref: r.ref ?? null,
     name: r.name,
     description: r.description,
     position: r.position,
