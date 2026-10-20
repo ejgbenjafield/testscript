@@ -60,17 +60,41 @@ export const updateAreaSchema = z.object({
   archived: z.boolean().optional(),
 });
 
+const longText = z.string().max(10_000).optional().nullable();
+const shortText = z.string().trim().max(500).optional().nullable();
+
 export const stepInputSchema = z.object({
+  /** The Question (UAT) or Test Description (SIT): what the tester checks or does. */
   action: z.string().trim().min(1, 'Required').max(10_000),
-  expectedResult: z.string().max(10_000).optional().nullable(),
+  details: longText,
+  expectedResult: longText,
 });
+
+/** Test case fields from the UAT, Regression and SIT templates. All optional except the name. */
+const testCaseFields = {
+  ref: z.string().trim().max(100).optional().nullable(),
+  description,
+  precondition: longText,
+  system: shortText,
+  importVia: shortText,
+  importDefinition: shortText,
+};
+export const TEST_CASE_FIELD_KEYS = ['description', 'precondition', 'system', 'importVia', 'importDefinition'] as const;
+export type TestCaseFieldKey = (typeof TEST_CASE_FIELD_KEYS)[number];
+export const TEST_CASE_FIELD_LABELS: Record<TestCaseFieldKey, string> = {
+  description: 'Description',
+  precondition: 'Pre-condition',
+  system: 'System',
+  importVia: 'Import via',
+  importDefinition: 'Import definition',
+};
 
 export const createTestCaseSchema = z.object({
   name,
-  description,
+  ...testCaseFields,
   steps: z.array(stepInputSchema).max(200).optional(),
 });
-export const updateTestCaseSchema = z.object({ name: name.optional(), description });
+export const updateTestCaseSchema = z.object({ name: name.optional(), ...testCaseFields });
 
 export const createStepSchema = stepInputSchema.extend({
   /** Insert at this 0-based position; appended when omitted. */

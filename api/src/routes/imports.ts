@@ -58,17 +58,20 @@ importsRouter.post('/suites/:suiteId/import', upload.single('file'), async (req,
     let position = Number(next.pos);
     for (const c of toCreate) {
       const tc = await one(
-        `INSERT INTO test_cases (org_id, suite_id, ref, name, description, position, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-        [s.org_id, s.id, c.ref, c.name, c.description, position++, user.id],
+        `INSERT INTO test_cases (org_id, suite_id, ref, name, description, precondition, system, import_via, import_definition, position, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+        [s.org_id, s.id, c.ref, c.name, c.description, c.precondition, c.system, c.importVia, c.importDefinition, position++, user.id],
         db,
       );
       if (c.steps.length) {
         await db.query(
-          `INSERT INTO steps (org_id, test_case_id, position, ref, action, expected_result)
-           SELECT $1, $2, ord - 1, ref, action, expected
-             FROM unnest($3::text[], $4::text[], $5::text[]) WITH ORDINALITY AS t(ref, action, expected, ord)`,
-          [s.org_id, tc.id, c.steps.map((x) => x.ref), c.steps.map((x) => x.action), c.steps.map((x) => x.expectedResult)],
+          `INSERT INTO steps (org_id, test_case_id, position, ref, action, details, expected_result)
+           SELECT $1, $2, ord - 1, ref, action, details, expected
+             FROM unnest($3::text[], $4::text[], $5::text[], $6::text[]) WITH ORDINALITY AS t(ref, action, details, expected, ord)`,
+          [
+            s.org_id, tc.id, c.steps.map((x) => x.ref), c.steps.map((x) => x.action),
+            c.steps.map((x) => x.details), c.steps.map((x) => x.expectedResult),
+          ],
         );
       }
     }

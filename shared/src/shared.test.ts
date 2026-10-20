@@ -97,9 +97,10 @@ describe('CSV import', () => {
     const r = parseImport('System,Import Definition,Test Description,Expected Results,Pass/Fail\nSFTP,Def,"Check it.\n1. Do a\n2. Do b",Works,Pass\n');
     expect(r.format).toBe('sit');
     expect(r.cases[0].name).toBe('Check it.');
+    expect(r.cases[0]).toMatchObject({ system: 'SFTP', importDefinition: 'Def' });
     expect(r.cases[0].steps).toEqual([
-      { ref: null, action: 'Do a', expectedResult: null },
-      { ref: null, action: 'Do b', expectedResult: 'Works' },
+      { ref: null, action: 'Do a', details: null, expectedResult: null },
+      { ref: null, action: 'Do b', details: null, expectedResult: 'Works' },
     ]);
   });
   it('groups SIT rows by Test Case ID', async () => {
@@ -109,7 +110,7 @@ describe('CSV import', () => {
     );
     expect(r.format).toBe('sit');
     expect(r.cases).toHaveLength(1);
-    expect(r.cases[0]).toMatchObject({ ref: 'R1', name: 'Def' });
+    expect(r.cases[0]).toMatchObject({ ref: 'R1', name: 'Def', system: 'SFTP', importVia: 'SFTP', importDefinition: 'Def' });
     expect(r.cases[0].steps.map((st) => [st.ref, st.action, st.expectedResult])).toEqual([
       ['R1.0', 'First.\n1. a', 'Ok1'],
       ['R1.1', 'Second.\n1. b', 'Ok2'],

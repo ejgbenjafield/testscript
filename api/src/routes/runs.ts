@@ -31,7 +31,9 @@ runsRouter.post('/suites/:suiteId/runs', async (req, res) => {
   const runId = await tx(async (db) => {
     const cases = await query(
       `SELECT t.id, t.name, t.description, t.position,
-              COALESCE(json_agg(json_build_object('id', st.id, 'ref', st.ref, 'position', st.position, 'action', st.action,
+              json_build_object('ref', t.ref, 'precondition', t.precondition, 'system', t.system,
+                                'importVia', t.import_via, 'importDefinition', t.import_definition) AS fields,
+              COALESCE(json_agg(json_build_object('id', st.id, 'ref', st.ref, 'position', st.position, 'action', st.action, 'details', st.details,
                        'expectedResult', st.expected_result) ORDER BY st.position)
                        FILTER (WHERE st.id IS NOT NULL), '[]') AS steps
          FROM test_cases t
@@ -57,9 +59,9 @@ runsRouter.post('/suites/:suiteId/runs', async (req, res) => {
     );
     for (const [i, c] of withSteps.entries()) {
       await db.query(
-        `INSERT INTO run_test_cases (run_id, org_id, test_case_id, position, name, description, steps)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [run.id, s.org_id, c.id, i, c.name, c.description, JSON.stringify(c.steps)],
+        `INSERT INTO run_test_cases (run_id, org_id, test_case_id, position, name, description, steps, fields)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [run.id, s.org_id, c.id, i, c.name, c.description, JSON.stringify(c.steps), JSON.stringify(c.fields)],
       );
     }
     await audit(req, { orgId: s.org_id, action: 'run.started', entityType: 'run', entityId: run.id, diff: { suiteId: s.id, testCases: withSteps.length, steps: totalSteps } }, db);
@@ -91,7 +93,7 @@ async function loadRun(runId: string): Promise<RunDetail> {
     [runId],
   );
   const cases = await query(
-    'SELECT test_case_id, position, name, description, steps FROM run_test_cases WHERE run_id = $1 ORDER BY position',
+    'SELECT test_case_id, position, name, description, steps, fields FROM run_test_cases WHERE run_id = $1 ORDER BY position',
     [runId],
   );
   const results = await query(
@@ -106,6 +108,11 @@ async function loadRun(runId: string): Promise<RunDetail> {
     position: c.position,
     name: c.name,
     description: c.description,
+    ref: c.fields?.ref ?? null,
+    precondition: c.fields?.precondition ?? null,
+    system: c.fields?.system ?? null,
+    importVia: c.fields?.importVia ?? null,
+    importDefinition: c.fields?.importDefinition ?? null,
     steps: c.steps,
   }));
   return {

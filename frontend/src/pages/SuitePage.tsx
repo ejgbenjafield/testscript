@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Attachment, ImportResult, Page, Project, RunDetail, RunSummary, Step, Suite, TestCase } from '@testscript/shared';
 import { api, errorMessage, qs } from '../lib/api';
+import { TEST_CASE_FIELD_KEYS, TEST_CASE_FIELD_LABELS } from '@testscript/shared';
 import { keys, useCan, useOrg } from '../lib/queries';
 import { plural } from '../lib/format';
 import { ConfirmButton, EmptyState, ErrorNote, InlineEdit, Loading, Modal, Tabs, toast } from '../components/ui';
@@ -229,7 +230,7 @@ function TestCaseRow({
   const canEdit = useCan('editContent');
   const invalidate = useInvalidateCases(suite);
   const update = useMutation({
-    mutationFn: (patch: Partial<Pick<TestCase, 'name' | 'description'>>) => api.patch<TestCase>(`/test-cases/${testCase.id}`, patch),
+    mutationFn: (patch: Record<string, string | null>) => api.patch<TestCase>(`/test-cases/${testCase.id}`, patch),
     onSuccess: invalidate,
   });
   const panelId = `case-panel-${testCase.id}`;
@@ -278,16 +279,7 @@ function TestCaseRow({
       </div>
       {expanded && (
         <div id={panelId} className="border-t border-line bg-canvas/50 px-4 pb-4 pt-3 sm:pl-[5.5rem]">
-          <div className="mb-3 text-sm text-ink-muted">
-            <InlineEdit
-              ariaLabel="test case description"
-              multiline
-              placeholder="Add preconditions or notes for testers"
-              value={testCase.description ?? ''}
-              disabled={!canEdit}
-              onSave={(description) => update.mutateAsync({ description: description || null })}
-            />
-          </div>
+          <TestCaseFields testCase={testCase} canEdit={canEdit} onSave={(patch) => update.mutateAsync(patch)} />
           <Steps testCase={testCase} suite={suite} />
         </div>
       )}
@@ -329,10 +321,11 @@ function Steps({ testCase, suite }: { testCase: TestCase; suite: Suite }) {
   return (
     <div>
       {steps.length > 0 && (
-        <div className="hidden grid-cols-[1.5rem_1.5rem_1fr_1fr_3.5rem] gap-3 px-1 pb-1 text-xs font-medium text-ink-muted md:grid">
+        <div className="hidden grid-cols-[1.5rem_1.5rem_1fr_1fr_1fr_3.5rem] gap-3 px-1 pb-1 text-xs font-medium text-ink-muted md:grid">
           <span />
           <span />
-          <span>Action</span>
+          <span>Question or test description</span>
+          <span>Details to validate</span>
           <span>Expected result</span>
           <span />
         </div>
@@ -356,7 +349,7 @@ function StepRow({ step, index, handle, onChanged }: { step: Step; index: number
   const canEdit = useCan('editContent');
   const queryClient = useQueryClient();
   const update = useMutation({
-    mutationFn: (patch: Partial<Pick<Step, 'action' | 'expectedResult'>>) => api.patch<Step>(`/steps/${step.id}`, patch),
+    mutationFn: (patch: Partial<Pick<Step, 'action' | 'details' | 'expectedResult'>>) => api.patch<Step>(`/steps/${step.id}`, patch),
     onSuccess: onChanged,
   });
   const fileKey = keys.attachments('step', step.id);
@@ -372,12 +365,23 @@ function StepRow({ step, index, handle, onChanged }: { step: Step; index: number
 
   return (
     <div className="px-2 py-2">
-      <div className="grid grid-cols-[1.5rem_1.5rem_1fr] items-start gap-x-3 gap-y-2 md:grid-cols-[1.5rem_1.5rem_1fr_1fr_3.5rem]">
+      <div className="grid grid-cols-[1.5rem_1.5rem_1fr] items-start gap-x-3 gap-y-2 md:grid-cols-[1.5rem_1.5rem_1fr_1fr_1fr_3.5rem]">
         <span className="pt-0.5">{handle}</span>
         <span className="pt-1 text-right text-sm tabular-nums text-ink-faint" title={step.ref ?? undefined}>{index + 1}.</span>
         <div className="text-sm">
           {step.ref && <span className="mb-0.5 block text-xs font-medium text-ink-muted">{step.ref}</span>}
           <InlineEdit ariaLabel={`step ${index + 1} action`} multiline value={step.action} disabled={!canEdit} onSave={(action) => update.mutateAsync({ action })} />
+        </div>
+        <div className="col-start-3 text-sm text-ink-soft md:col-start-auto">
+          <span className="text-xs text-ink-muted md:hidden">Details to validate: </span>
+          <InlineEdit
+            ariaLabel={`step ${index + 1} details to validate`}
+            multiline
+            placeholder="Add details to validate"
+            value={step.details ?? ''}
+            disabled={!canEdit}
+            onSave={(details) => update.mutateAsync({ details: details || null })}
+          />
         </div>
         <div className="col-start-3 text-sm text-ink-soft md:col-start-auto">
           <span className="text-xs text-ink-muted md:hidden">Expected: </span>
@@ -430,11 +434,14 @@ function StepRow({ step, index, handle, onChanged }: { step: Step; index: number
 
 function NewStep({ testCase, onAdded }: { testCase: TestCase; onAdded: () => void }) {
   const [action, setAction] = useState('');
+  const [details, setDetails] = useState('');
   const [expected, setExpected] = useState('');
   const add = useMutation({
-    mutationFn: () => api.post<Step>(`/test-cases/${testCase.id}/steps`, { action, expectedResult: expected || null }),
+    mutationFn: () =>
+      api.post<Step>(`/test-cases/${testCase.id}/steps`, { action, details: details || null, expectedResult: expected || null }),
     onSuccess: () => {
       setAction('');
+      setDetails('');
       setExpected('');
       onAdded();
       document.getElementById(`new-step-${testCase.id}`)?.focus();
@@ -442,18 +449,20 @@ function NewStep({ testCase, onAdded }: { testCase: TestCase; onAdded: () => voi
   });
   return (
     <form
-      className="mt-3 grid gap-2 md:grid-cols-[1fr_1fr_auto] md:pl-[3.75rem]"
+      className="mt-3 grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto] md:pl-[3.75rem]"
       onSubmit={(e) => {
         e.preventDefault();
         if (action.trim()) add.mutate();
       }}
     >
       <label className="sr-only" htmlFor={`new-step-${testCase.id}`}>New step action</label>
-      <input id={`new-step-${testCase.id}`} className="field" placeholder="What the tester does" value={action} onChange={(e) => setAction(e.target.value)} />
+      <input id={`new-step-${testCase.id}`} className="field" placeholder="Question or test description" value={action} onChange={(e) => setAction(e.target.value)} />
+      <label className="sr-only" htmlFor={`new-step-det-${testCase.id}`}>Details to validate</label>
+      <input id={`new-step-det-${testCase.id}`} className="field" placeholder="Details to validate" value={details} onChange={(e) => setDetails(e.target.value)} />
       <label className="sr-only" htmlFor={`new-step-exp-${testCase.id}`}>Expected result</label>
-      <input id={`new-step-exp-${testCase.id}`} className="field" placeholder="What they should see" value={expected} onChange={(e) => setExpected(e.target.value)} />
+      <input id={`new-step-exp-${testCase.id}`} className="field" placeholder="Expected result" value={expected} onChange={(e) => setExpected(e.target.value)} />
       <button className="btn-secondary" disabled={add.isPending || !action.trim()}>Add step</button>
-      {add.error ? <ErrorNote error={add.error} className="md:col-span-3" /> : null}
+      {add.error ? <ErrorNote error={add.error} className="md:col-span-4" /> : null}
     </form>
   );
 }
@@ -717,5 +726,46 @@ function ImportModal({ suite, onClose }: { suite: Suite; onClose: () => void }) 
         </div>
       )}
     </Modal>
+  );
+}
+
+/** The template fields on a test case. Empty ones are hidden from people who can't edit them. */
+function TestCaseFields({
+  testCase,
+  canEdit,
+  onSave,
+}: {
+  testCase: TestCase;
+  canEdit: boolean;
+  onSave: (patch: Record<string, string | null>) => Promise<unknown>;
+}) {
+  const fields: Array<{ key: 'ref' | (typeof TEST_CASE_FIELD_KEYS)[number]; label: string; multiline: boolean }> = [
+    { key: 'ref', label: 'Test case ID', multiline: false },
+    ...TEST_CASE_FIELD_KEYS.map((key) => ({
+      key,
+      label: TEST_CASE_FIELD_LABELS[key],
+      multiline: key === 'description' || key === 'precondition',
+    })),
+  ];
+  const shown = fields.filter((f) => canEdit || testCase[f.key]);
+  if (shown.length === 0) return null;
+  return (
+    <dl className="mb-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[9rem_1fr]">
+      {shown.map((f) => (
+        <div key={f.key} className="contents">
+          <dt className="pt-0.5 text-ink-muted">{f.label}</dt>
+          <dd className="min-w-0 text-ink-soft">
+            <InlineEdit
+              ariaLabel={`${f.label.toLowerCase()} of ${testCase.name}`}
+              multiline={f.multiline}
+              placeholder={`Add ${f.label.toLowerCase()}`}
+              value={testCase[f.key] ?? ''}
+              disabled={!canEdit}
+              onSave={(value) => onSave({ [f.key]: value || null })}
+            />
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }

@@ -296,11 +296,17 @@ describe('invitations and roles', () => {
       expect(done.body.created).toBe(2);
       const list = await owner.get(`/v1/suites/${suiteId}/test-cases?includeSteps=true`);
       const imported = list.body.data.find((t: any) => t.ref === 'IMP1');
-      expect(imported.description).toBe('Checks imports\n\nPre-condition: Logged in');
-      expect(imported.steps.map((st: any) => [st.ref, st.action, st.expectedResult])).toEqual([
-        ['IMP1.0', 'First question, with a comma?', 'First ok'],
-        ['IMP1.1', 'Second question?\n\nDetails to validate: Look closely', 'Second ok'],
+      expect(imported).toMatchObject({ description: 'Checks imports', precondition: 'Logged in' });
+      expect(imported.steps.map((st: any) => [st.ref, st.action, st.details, st.expectedResult])).toEqual([
+        ['IMP1.0', 'First question, with a comma?', null, 'First ok'],
+        ['IMP1.1', 'Second question?', 'Look closely', 'Second ok'],
       ]);
+
+      // Every template field can be edited, and cleared, on its own.
+      const edited = await owner.patch(`/v1/test-cases/${imported.id}`, { system: 'SFTP', importDefinition: 'Def', precondition: '' });
+      expect(edited.body).toMatchObject({ system: 'SFTP', importDefinition: 'Def', precondition: null, description: 'Checks imports' });
+      const step = await owner.patch(`/v1/steps/${imported.steps[0].id}`, { details: 'Look again' });
+      expect(step.body).toMatchObject({ details: 'Look again', expectedResult: 'First ok' });
 
       // Uploading the same file again doesn't duplicate anything.
       const again = await send(false);

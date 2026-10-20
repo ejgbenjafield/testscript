@@ -127,7 +127,10 @@ export interface Step {
   /** ID from an uploaded spreadsheet, e.g. "REPORT1.0". */
   ref: string | null;
   position: number;
+  /** The Question (UAT) or Test Description (SIT). */
   action: string;
+  /** Details to Validate. */
+  details: string | null;
   expectedResult: string | null;
   attachmentCount?: number;
 }
@@ -139,6 +142,10 @@ export interface TestCase {
   ref: string | null;
   name: string;
   description: string | null;
+  precondition: string | null;
+  system: string | null;
+  importVia: string | null;
+  importDefinition: string | null;
   position: number;
   stepCount: number;
   steps?: Step[];
@@ -162,6 +169,7 @@ export interface SnapshotStep {
   ref?: string | null;
   position: number;
   action: string;
+  details?: string | null;
   expectedResult: string | null;
 }
 
@@ -170,6 +178,12 @@ export interface RunTestCase {
   position: number;
   name: string;
   description: string | null;
+  /** Test case fields as they were when the run started. */
+  ref: string | null;
+  precondition: string | null;
+  system: string | null;
+  importVia: string | null;
+  importDefinition: string | null;
   steps: SnapshotStep[];
 }
 

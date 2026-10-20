@@ -66,6 +66,7 @@ export type ImportFormat = 'uat' | 'sit';
 export interface ImportedStep {
   ref: string | null;
   action: string;
+  details: string | null;
   expectedResult: string | null;
 }
 
@@ -73,6 +74,10 @@ export interface ImportedCase {
   ref: string | null;
   name: string;
   description: string | null;
+  precondition: string | null;
+  system: string | null;
+  importVia: string | null;
+  importDefinition: string | null;
   steps: ImportedStep[];
 }
 
@@ -182,10 +187,10 @@ export function parseImport(text: string): ParsedImport {
       warnings.push(`Row ${line}: ${id} appears more than once; only the first was used.`);
       return;
     }
-    const action = question && details ? `${question}\n\nDetails to validate: ${details}` : question || details;
     group.steps.push({
       ref: id,
-      action,
+      action: question || details,
+      details: question ? details || null : null,
       expectedResult: get(row, 'expected') || null,
       order: step ?? Number.MAX_SAFE_INTEGER,
       row: line,
@@ -200,12 +205,15 @@ export function parseImport(text: string): ParsedImport {
     }
     const steps = [...g.steps].sort((a, b) => a.order - b.order || a.row - b.row);
     if (steps.length > MAX_IMPORT_STEPS) warnings.push(`${g.ref} has more than ${MAX_IMPORT_STEPS} steps; the rest were left out.`);
-    const description = [g.description, g.precondition && `Pre-condition: ${g.precondition}`].filter(Boolean).join('\n\n');
     cases.push({
       ref: g.ref,
       name: (g.name || g.ref).slice(0, 200),
-      description: description || null,
-      steps: steps.slice(0, MAX_IMPORT_STEPS).map(({ ref, action, expectedResult }) => ({ ref, action, expectedResult })),
+      description: g.description || null,
+      precondition: g.precondition || null,
+      system: null,
+      importVia: null,
+      importDefinition: null,
+      steps: steps.slice(0, MAX_IMPORT_STEPS).map(({ ref, action, details, expectedResult }) => ({ ref, action, details, expectedResult })),
     });
   }
   if (cases.length === 0 && warnings.length === 0) warnings.push('The file has headings but no rows to import.');
@@ -248,18 +256,18 @@ function parseSit(rows: string[][], headerIndex: number): ParsedImport {
     const steps: ImportedStep[] = (stepLines.length ? stepLines : [text]).slice(0, MAX_IMPORT_STEPS).map((action, n, all) => ({
       ref: null,
       action,
+      details: null,
       expectedResult: n === all.length - 1 ? expected : null,
     }));
-    const details = [
-      get(row, c.system) && `System: ${get(row, c.system)}`,
-      get(row, c.via) && `Import via: ${get(row, c.via)}`,
-      get(row, c.definition) && `Import definition: ${get(row, c.definition)}`,
-    ].filter(Boolean).join('\n');
     const name = firstSentence(intro || stepLines[0] || text);
     cases.push({
       ref: null,
       name,
-      description: [stepLines.length && intro !== name ? intro : '', details].filter(Boolean).join('\n\n') || null,
+      description: (stepLines.length && intro !== name ? intro : '') || null,
+      precondition: null,
+      system: get(row, c.system) || null,
+      importVia: get(row, c.via) || null,
+      importDefinition: get(row, c.definition) || null,
       steps,
     });
   });
@@ -287,7 +295,10 @@ function parseSitById(rows: string[][], headerIndex: number): ParsedImport {
   };
   const get = (row: string[], i: number) => (i >= 0 ? (row[i] ?? '').trim() : '');
   const warnings: string[] = [];
-  const groups = new Map<string, { ref: string; name: string; details: string; steps: Array<ImportedStep & { order: number; row: number }> }>();
+  const groups = new Map<
+    string,
+    { ref: string; name: string; system: string; importVia: string; importDefinition: string; steps: Array<ImportedStep & { order: number; row: number }> }
+  >();
 
   rows.slice(headerIndex + 1).forEach((row, i) => {
     const line = headerIndex + i + 2;
@@ -306,19 +317,21 @@ function parseSitById(rows: string[][], headerIndex: number): ParsedImport {
     const key = caseRef.toLowerCase();
     let group = groups.get(key);
     if (!group) {
-      const details = [
-        get(row, c.system) && `System: ${get(row, c.system)}`,
-        get(row, c.via) && `Import via: ${get(row, c.via)}`,
-        get(row, c.definition) && `Import definition: ${get(row, c.definition)}`,
-      ].filter(Boolean).join('\n');
-      group = { ref: caseRef, name: get(row, c.definition) || get(row, c.system) || firstSentence(text), details, steps: [] };
+      group = {
+        ref: caseRef,
+        name: get(row, c.definition) || get(row, c.system) || firstSentence(text),
+        system: get(row, c.system),
+        importVia: get(row, c.via),
+        importDefinition: get(row, c.definition),
+        steps: [],
+      };
       groups.set(key, group);
     }
     if (group.steps.some((st) => st.ref?.toLowerCase() === id.toLowerCase())) {
       warnings.push(`Row ${line}: ${id} appears more than once; only the first was used.`);
       return;
     }
-    group.steps.push({ ref: id, action: text, expectedResult: get(row, c.expected) || null, order: step ?? Number.MAX_SAFE_INTEGER, row: line });
+    group.steps.push({ ref: id, action: text, details: null, expectedResult: get(row, c.expected) || null, order: step ?? Number.MAX_SAFE_INTEGER, row: line });
   });
 
   const cases: ImportedCase[] = [];
@@ -332,8 +345,12 @@ function parseSitById(rows: string[][], headerIndex: number): ParsedImport {
     cases.push({
       ref: g.ref,
       name: g.name.slice(0, 200),
-      description: g.details || null,
-      steps: steps.slice(0, MAX_IMPORT_STEPS).map(({ ref, action, expectedResult }) => ({ ref, action, expectedResult })),
+      description: null,
+      precondition: null,
+      system: g.system || null,
+      importVia: g.importVia || null,
+      importDefinition: g.importDefinition || null,
+      steps: steps.slice(0, MAX_IMPORT_STEPS).map(({ ref, action, details, expectedResult }) => ({ ref, action, details, expectedResult })),
     });
   }
   if (cases.length === 0 && warnings.length === 0) warnings.push('The file has headings but no rows to import.');

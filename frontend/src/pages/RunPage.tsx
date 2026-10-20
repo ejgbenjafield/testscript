@@ -187,6 +187,7 @@ function CasePanel({
         <CaseStatusBadge status={status} />
       </div>
       {testCase.description && <p className="mt-1 max-w-[70ch] whitespace-pre-wrap text-ink-muted">{testCase.description}</p>}
+      <CaseFields testCase={testCase} />
       <ol className="mt-5 space-y-3">
         {testCase.steps.map((step, i) => (
           <StepCard
@@ -291,11 +292,17 @@ function StepCard({
     <li className={`rounded-lg border bg-white p-4 ${tone}`}>
       <div className="grid gap-4 md:grid-cols-[2rem_1fr_auto]">
         <span className="text-lg font-semibold tabular-nums text-ink-faint">{index + 1}</span>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className={`grid gap-3 ${step.details ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
           <div>
             <p className="text-xs font-medium text-ink-muted">Do this{step.ref && <span className="ml-2 text-ink-faint">{step.ref}</span>}</p>
             <p className="mt-0.5 whitespace-pre-wrap">{step.action}</p>
           </div>
+          {step.details && (
+            <div>
+              <p className="text-xs font-medium text-ink-muted">Details to validate</p>
+              <p className="mt-0.5 whitespace-pre-wrap text-ink-soft">{step.details}</p>
+            </div>
+          )}
           <div>
             <p className="text-xs font-medium text-ink-muted">Expect this</p>
             <p className="mt-0.5 whitespace-pre-wrap text-ink-soft">{step.expectedResult || <span className="text-ink-faint">No expected result given</span>}</p>
@@ -369,5 +376,27 @@ function StepCard({
         </p>
       )}
     </li>
+  );
+}
+
+/** Pre-condition, system and import details for the test case, as they were when the run started. */
+function CaseFields({ testCase }: { testCase: RunTestCase }) {
+  const fields = [
+    { label: 'Test case ID', value: testCase.ref },
+    { label: 'Pre-condition', value: testCase.precondition },
+    { label: 'System', value: testCase.system },
+    { label: 'Import via', value: testCase.importVia },
+    { label: 'Import definition', value: testCase.importDefinition },
+  ].filter((f) => f.value);
+  if (fields.length === 0) return null;
+  return (
+    <dl className="mt-3 grid max-w-3xl gap-x-6 gap-y-1 rounded-md bg-canvas px-4 py-3 text-sm sm:grid-cols-[9rem_1fr]">
+      {fields.map((f) => (
+        <div key={f.label} className="contents">
+          <dt className="text-ink-muted">{f.label}</dt>
+          <dd className="whitespace-pre-wrap text-ink-soft">{f.value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }

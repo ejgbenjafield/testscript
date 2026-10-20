@@ -67,6 +67,7 @@ function mapStep(r: any): Step {
     ref: r.ref ?? null,
     position: r.position,
     action: r.action,
+    details: r.details ?? null,
     expectedResult: r.expected_result,
     attachmentCount: r.attachment_count === undefined ? undefined : Number(r.attachment_count),
   };
@@ -79,6 +80,10 @@ function mapTestCase(r: any, steps?: Step[]): TestCase {
     ref: r.ref ?? null,
     name: r.name,
     description: r.description,
+    precondition: r.precondition ?? null,
+    system: r.system ?? null,
+    importVia: r.import_via ?? null,
+    importDefinition: r.import_definition ?? null,
     position: r.position,
     stepCount: steps ? steps.length : Number(r.step_count ?? 0),
     steps,
@@ -343,15 +348,18 @@ contentRouter.post('/suites/:suiteId/test-cases', async (req, res) => {
       db,
     );
     const row = await one(
-      `INSERT INTO test_cases (org_id, suite_id, name, description, position, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-      [s.org_id, s.id, input.name, input.description ?? null, next.pos, user.id],
+      `INSERT INTO test_cases (org_id, suite_id, name, ref, description, precondition, system, import_via, import_definition, position, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+      [
+        s.org_id, s.id, input.name, input.ref || null, input.description ?? null, input.precondition ?? null,
+        input.system || null, input.importVia || null, input.importDefinition || null, next.pos, user.id,
+      ],
       db,
     );
     for (const [i, step] of (input.steps ?? []).entries()) {
       await db.query(
-        `INSERT INTO steps (org_id, test_case_id, position, action, expected_result) VALUES ($1, $2, $3, $4, $5)`,
-        [s.org_id, row.id, i, step.action, step.expectedResult ?? null],
+        `INSERT INTO steps (org_id, test_case_id, position, action, details, expected_result) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [s.org_id, row.id, i, step.action, step.details ?? null, step.expectedResult ?? null],
       );
     }
     await db.query('UPDATE suites SET updated_at = now() WHERE id = $1', [s.id]);
@@ -386,12 +394,26 @@ contentRouter.patch('/test-cases/:testCaseId', async (req, res) => {
   const t = await requireResource(req, 'testCase', req.params.testCaseId, 'editContent');
   const input = parse(updateTestCaseSchema, req.body);
   const testCase = await tx(async (db) => {
-    const before = await one('SELECT name, description FROM test_cases WHERE id = $1 FOR UPDATE', [t.id], db);
-    await db.query(
-      `UPDATE test_cases SET name = COALESCE($2, name),
-              description = CASE WHEN $4 THEN $3 ELSE description END, updated_at = now() WHERE id = $1`,
-      [t.id, input.name ?? null, input.description ?? null, input.description !== undefined],
+    const before = await one(
+      `SELECT name, ref, description, precondition, system, import_via AS "importVia", import_definition AS "importDefinition"
+         FROM test_cases WHERE id = $1 FOR UPDATE`,
+      [t.id],
+      db,
     );
+    // Only the fields that were sent change; an empty value clears a field.
+    const columns: Record<string, string> = {
+      name: 'name', ref: 'ref', description: 'description', precondition: 'precondition',
+      system: 'system', importVia: 'import_via', importDefinition: 'import_definition',
+    };
+    const sets: string[] = [];
+    const values: unknown[] = [t.id];
+    for (const [key, column] of Object.entries(columns)) {
+      const value = (input as Record<string, unknown>)[key];
+      if (value === undefined) continue;
+      values.push(value === '' ? null : value);
+      sets.push(`${column} = $${values.length}`);
+    }
+    if (sets.length) await db.query(`UPDATE test_cases SET ${sets.join(', ')}, updated_at = now() WHERE id = $1`, values);
     await audit(req, { orgId: t.org_id, action: 'test_case.updated', entityType: 'test_case', entityId: t.id, diff: changed(before, input) }, db);
     return getTestCase(t.id, db);
   });
@@ -435,9 +457,9 @@ contentRouter.post('/test-cases/:testCaseId/steps', async (req, res) => {
       [t.id, position],
     );
     const row = await one(
-      `INSERT INTO steps (org_id, test_case_id, position, action, expected_result)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [t.org_id, t.id, position, input.action, input.expectedResult ?? null],
+      `INSERT INTO steps (org_id, test_case_id, position, action, details, expected_result)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [t.org_id, t.id, position, input.action, input.details ?? null, input.expectedResult ?? null],
       db,
     );
     await db.query('UPDATE test_cases SET updated_at = now() WHERE id = $1', [t.id]);
@@ -463,11 +485,12 @@ contentRouter.patch('/steps/:stepId', async (req, res) => {
   const st = await requireResource(req, 'step', req.params.stepId, 'editContent');
   const input = parse(updateStepSchema, req.body);
   const step = await tx(async (db) => {
-    const before = await one('SELECT action, expected_result AS "expectedResult" FROM steps WHERE id = $1 FOR UPDATE', [st.id], db);
+    const before = await one('SELECT action, details, expected_result AS "expectedResult" FROM steps WHERE id = $1 FOR UPDATE', [st.id], db);
     await db.query(
       `UPDATE steps SET action = COALESCE($2, action),
+              details = CASE WHEN $6 THEN $5 ELSE details END,
               expected_result = CASE WHEN $4 THEN $3 ELSE expected_result END, updated_at = now() WHERE id = $1`,
-      [st.id, input.action ?? null, input.expectedResult ?? null, input.expectedResult !== undefined],
+      [st.id, input.action ?? null, input.expectedResult || null, input.expectedResult !== undefined, input.details || null, input.details !== undefined],
     );
     await db.query('UPDATE test_cases SET updated_at = now() WHERE id = $1', [st.test_case_id]);
     await audit(req, { orgId: st.org_id, action: 'step.updated', entityType: 'step', entityId: st.id, diff: changed(before, input) }, db);
