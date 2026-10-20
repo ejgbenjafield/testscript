@@ -69,7 +69,7 @@ export function RunPage() {
     <div className="mx-auto max-w-6xl">
       <nav aria-label="Breadcrumb" className="text-sm text-ink-muted">
         <Link className="link" to={`/${org.slug}/projects/${r.projectId}`}>{r.projectName}</Link> /{' '}
-        <Link className="link" to={`/${org.slug}/suites/${r.suiteId}`}>{r.suiteName}</Link> / Run
+        <Link className="link" to={`/${org.slug}/suites/${r.suiteId}`}>{r.suiteRef} {r.suiteName}</Link> / Run
       </nav>
       <header className="mt-2 flex flex-wrap items-start justify-between gap-4">
         <div>

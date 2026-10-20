@@ -79,6 +79,8 @@ export interface InvitationPreview {
 export interface Project {
   id: string;
   orgId: string;
+  /** 1, 2, 3… within the organisation. Never reused. */
+  number: number;
   name: string;
   description: string | null;
   suiteCount: number;
@@ -92,6 +94,11 @@ export interface Suite {
   id: string;
   projectId: string;
   projectName?: string;
+  /** The test script's number within its project: the "2" in 1.2. */
+  number: number;
+  projectNumber: number;
+  /** Reference such as "1.2": project number, then test script number. */
+  ref: string;
   name: string;
   description: string | null;
   testCaseCount: number;
@@ -172,6 +179,7 @@ export interface RunResult {
 
 export interface RunDetail extends RunSummary {
   suiteName: string;
+  suiteRef: string;
   projectId: string;
   projectName: string;
   testCases: RunTestCase[];
@@ -180,6 +188,7 @@ export interface RunDetail extends RunSummary {
 
 export interface DashboardProject {
   id: string;
+  number: number;
   name: string;
   description: string | null;
   suiteCount: number;
@@ -198,8 +207,8 @@ export interface Dashboard {
     passRateLast30Days: number | null;
   };
   projects: DashboardProject[];
-  activeRuns: Array<RunSummary & { suiteName: string; projectName: string }>;
-  recentRuns: Array<RunSummary & { suiteName: string; projectName: string }>;
+  activeRuns: Array<RunSummary & { suiteName: string; suiteRef: string; projectName: string }>;
+  recentRuns: Array<RunSummary & { suiteName: string; suiteRef: string; projectName: string }>;
 }
 
 export interface SearchHit {
@@ -207,6 +216,7 @@ export interface SearchHit {
   testCaseName: string;
   suiteId: string;
   suiteName: string;
+  suiteRef: string;
   projectId: string;
   projectName: string;
   /** Step text that matched, when the match was in a step. */

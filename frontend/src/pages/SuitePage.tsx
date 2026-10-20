@@ -20,7 +20,8 @@ export function SuitePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'cases' | 'history'>('cases');
-  const [starting, setStarting] = useState(false);
+  // Which test cases the run dialog starts with selected: 'all', a chosen few, or closed.
+  const [starting, setStarting] = useState<'all' | string[] | null>(null);
 
   const suite = useQuery({ queryKey: keys.suite(suiteId), queryFn: () => api.get<Suite>(`/suites/${suiteId}`) });
   const project = useQuery({
@@ -44,16 +45,17 @@ export function SuitePage() {
     <div className="mx-auto max-w-5xl">
       <nav aria-label="Breadcrumb" className="text-sm text-ink-muted">
         <Link className="link" to={`/${org.slug}/dashboard`}>Dashboard</Link> /{' '}
-        <Link className="link" to={`/${org.slug}/projects/${s.projectId}`}>{project.data?.name ?? s.projectName ?? 'Project'}</Link> / Suite
+        <Link className="link" to={`/${org.slug}/projects/${s.projectId}`}>{project.data?.name ?? s.projectName ?? 'Project'}</Link> / Test script
       </nav>
       <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold">
-            <InlineEdit ariaLabel="suite name" value={s.name} disabled={!canEdit} onSave={(name) => update.mutateAsync({ name })} />
+          <h1 className="flex items-baseline gap-3 text-2xl font-semibold">
+            <span className="tabular-nums text-ink-faint">{s.ref}</span>
+            <InlineEdit ariaLabel="test script name" value={s.name} disabled={!canEdit} onSave={(name) => update.mutateAsync({ name })} />
           </h1>
           <div className="mt-1 max-w-2xl text-ink-muted">
             <InlineEdit
-              ariaLabel="suite description"
+              ariaLabel="test script description"
               multiline
               placeholder="Add a description"
               value={s.description ?? ''}
@@ -65,11 +67,11 @@ export function SuitePage() {
         <div className="flex gap-2">
           {canEdit && (
             <ConfirmButton
-              label="Delete suite"
+              label="Delete test script"
               className="btn-danger"
               title={`Delete ${s.name}?`}
-              body="Its test cases will be removed from view. Run history for this suite stays available from the runs' own links."
-              confirmLabel="Delete suite"
+              body="Its test cases will be removed from view. Run history for this test script stays available from the runs' own links."
+              confirmLabel="Delete test script"
               onConfirm={async () => {
                 await api.delete(`/suites/${s.id}`);
                 queryClient.invalidateQueries({ queryKey: keys.suites(s.projectId) });
@@ -80,7 +82,7 @@ export function SuitePage() {
             />
           )}
           {canRun && (
-            <button className="btn-primary" disabled={s.testCaseCount === 0} onClick={() => setStarting(true)}>
+            <button className="btn-primary" disabled={s.testCaseCount === 0} onClick={() => setStarting('all')}>
               Start a run
             </button>
           )}
@@ -96,17 +98,17 @@ export function SuitePage() {
             { id: 'history', label: 'Run history' },
           ]}
         />
-        <div className="mt-5">{tab === 'cases' ? <TestCases suite={s} /> : <RunHistory suiteId={s.id} />}</div>
+        <div className="mt-5">{tab === 'cases' ? <TestCases suite={s} onRun={canRun ? (id) => setStarting([id]) : undefined} /> : <RunHistory suiteId={s.id} />}</div>
       </div>
 
-      <StartRunModal suite={s} open={starting} onClose={() => setStarting(false)} />
+      <StartRunModal suite={s} initial={starting} onClose={() => setStarting(null)} />
     </div>
   );
 }
 
 // Test cases --------------------------------------------------------------------------
 
-function TestCases({ suite }: { suite: Suite }) {
+function TestCases({ suite, onRun }: { suite: Suite; onRun?: (testCaseId: string) => void }) {
   const canEdit = useCan('editContent');
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
@@ -178,6 +180,7 @@ function TestCases({ suite }: { suite: Suite }) {
                     handle={handle}
                     expanded={open.has(tc.id)}
                     onToggle={() => toggle(tc.id)}
+                    onRun={onRun}
                   />
                 )}
               </SortableItem>
@@ -205,6 +208,7 @@ function TestCaseRow({
   handle,
   expanded,
   onToggle,
+  onRun,
 }: {
   index: number;
   testCase: TestCase;
@@ -212,6 +216,7 @@ function TestCaseRow({
   handle: React.ReactNode;
   expanded: boolean;
   onToggle: () => void;
+  onRun?: (testCaseId: string) => void;
 }) {
   const canEdit = useCan('editContent');
   const invalidate = useInvalidateCases(suite);
@@ -242,11 +247,16 @@ function TestCaseRow({
           <InlineEdit ariaLabel="test case name" value={testCase.name} disabled={!canEdit} onSave={(name) => update.mutateAsync({ name })} />
         </div>
         <span className="shrink-0 text-sm text-ink-muted">{plural(testCase.stepCount, 'step')}</span>
+        {onRun && testCase.stepCount > 0 && (
+          <button type="button" className="btn-ghost btn-sm" onClick={() => onRun(testCase.id)} aria-label={`Run ${testCase.name} on its own`}>
+            Run
+          </button>
+        )}
         {canEdit && (
           <ConfirmButton
             label={`Delete ${testCase.name}`}
             title={`Delete “${testCase.name}”?`}
-            body="It will be removed from this suite. Runs that already included it keep their results."
+            body="It will be removed from this test script. Runs that already included it keep their results."
             confirmLabel="Delete test case"
             onConfirm={async () => {
               await api.delete(`/test-cases/${testCase.id}`);
@@ -475,46 +485,110 @@ function RunHistory({ suiteId }: { suiteId: string }) {
   if (runs.isPending) return <Loading />;
   if (runs.isError) return <ErrorNote error={runs.error} />;
   if (runs.data.data.length === 0) {
-    return <EmptyState title="No runs yet">Start a run to work through this suite's test cases and record what passes and fails.</EmptyState>;
+    return <EmptyState title="No runs yet">Start a run to work through this test script's test cases and record what passes and fails.</EmptyState>;
   }
   return <RunList runs={runs.data.data} />;
 }
 
-function StartRunModal({ suite, open, onClose }: { suite: Suite; open: boolean; onClose: () => void }) {
+function StartRunModal({ suite, initial, onClose }: { suite: Suite; initial: 'all' | string[] | null; onClose: () => void }) {
   const org = useOrg();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const open = initial !== null;
   const [name, setName] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const cases = useQuery({
+    queryKey: keys.testCases(suite.id),
+    queryFn: () => api.get<CasesPage>(`/suites/${suite.id}/test-cases${qs({ includeSteps: true, limit: 500 })}`),
+    enabled: open,
+  });
+  // Only test cases with steps can be run.
+  const runnable = (cases.data?.data ?? []).filter((c) => c.stepCount > 0);
+
+  useEffect(() => {
+    if (!open || !cases.data) return;
+    setSelected(new Set(initial === 'all' ? runnable.map((c) => c.id) : initial));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, cases.data]);
+
+  const all = runnable.length > 0 && runnable.every((c) => selected.has(c.id));
   const start = useMutation({
-    mutationFn: () => api.post<RunDetail>(`/suites/${suite.id}/runs`, { name: name.trim() || undefined }),
+    mutationFn: () =>
+      api.post<RunDetail>(`/suites/${suite.id}/runs`, {
+        name: name.trim() || undefined,
+        // Leave the list out when everything is ticked, so the run includes the whole test script.
+        testCaseIds: all ? undefined : [...selected],
+      }),
     onSuccess: (run) => {
       queryClient.invalidateQueries({ queryKey: keys.runs(suite.id) });
       queryClient.invalidateQueries({ queryKey: keys.dashboard(org.id) });
       queryClient.setQueryData(keys.run(run.id), run);
+      setName('');
       onClose();
       navigate(`/${org.slug}/runs/${run.id}`);
     },
   });
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={`Run ${suite.name}`}
+      title={`Run ${suite.ref} ${suite.name}`}
       footer={
         <>
           <button className="btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" form="start-run" disabled={start.isPending}>Start run</button>
+          <button className="btn-primary" form="start-run" disabled={start.isPending || selected.size === 0}>
+            {all ? 'Start run' : `Run ${plural(selected.size, 'test case')}`}
+          </button>
         </>
       }
     >
-      <form id="start-run" className="space-y-3" onSubmit={(e) => { e.preventDefault(); start.mutate(); }}>
+      <form id="start-run" className="space-y-4" onSubmit={(e) => { e.preventDefault(); start.mutate(); }}>
         <p className="text-sm text-ink-muted">
-          The run uses the test cases and steps as they are now. Later edits to the suite won't change it.
+          The run uses the test cases and steps as they are now. Later edits to the test script won't change it.
         </p>
         <div>
           <label className="label" htmlFor="run-name">Name (optional)</label>
-          <input id="run-name" className="field" autoFocus value={name} placeholder="Release 2.4 regression" onChange={(e) => setName(e.target.value)} />
+          <input id="run-name" className="field" value={name} placeholder="Release 2.4 regression" onChange={(e) => setName(e.target.value)} />
         </div>
+        <fieldset>
+          <div className="flex items-center justify-between">
+            <legend className="label mb-0">Test cases to run</legend>
+            {runnable.length > 1 && (
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                onClick={() => setSelected(all ? new Set() : new Set(runnable.map((c) => c.id)))}
+              >
+                {all ? 'Clear all' : 'Select all'}
+              </button>
+            )}
+          </div>
+          {cases.isPending ? (
+            <Loading />
+          ) : runnable.length === 0 ? (
+            <p className="mt-2 text-sm text-ink-muted">None of the test cases have steps yet.</p>
+          ) : (
+            <ul className="mt-2 max-h-64 divide-y divide-line overflow-auto rounded-md border border-line">
+              {runnable.map((c) => (
+                <li key={c.id}>
+                  <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-canvas">
+                    <input type="checkbox" className="h-4 w-4 accent-cobalt-600" checked={selected.has(c.id)} onChange={() => toggle(c.id)} />
+                    <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                    <span className="shrink-0 text-xs text-ink-muted">{plural(c.stepCount, 'step')}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+        </fieldset>
         <ErrorNote error={start.error} />
       </form>
     </Modal>

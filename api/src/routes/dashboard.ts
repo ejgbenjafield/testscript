@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { Dashboard, DashboardProject, SearchHit } from '@testscript/shared';
+import { scriptRef, type Dashboard, type DashboardProject, type SearchHit } from '@testscript/shared';
 import { one, query } from '../db';
 import { requireOrg } from '../authz';
 import { parse } from '../errors';
@@ -31,7 +31,7 @@ dashboardRouter.get('/orgs/:orgId/dashboard', async (req, res) => {
   );
 
   const projects = await query(
-    `SELECT p.id, p.name, p.description,
+    `SELECT p.id, p.number, p.name, p.description,
             (SELECT count(*) FROM suites s WHERE s.project_id = p.id AND s.deleted_at IS NULL) AS suite_count,
             (SELECT count(*) FROM test_cases t JOIN suites s ON s.id = t.suite_id
               WHERE s.project_id = p.id AND s.deleted_at IS NULL AND t.deleted_at IS NULL) AS test_case_count,
@@ -49,14 +49,14 @@ dashboardRouter.get('/orgs/:orgId/dashboard', async (req, res) => {
             ) t) AS trend
        FROM projects p
       WHERE p.org_id = $1 AND p.deleted_at IS NULL
-      ORDER BY last_run_at DESC NULLS LAST, p.created_at DESC
+      ORDER BY p.number
       LIMIT 100`,
     [org.id],
   );
 
   const runsWithNames = (where: string, limit: number) =>
     query(
-      `SELECT x.*, s.name AS suite_name, p.name AS project_name
+      `SELECT x.*, s.name AS suite_name, s.number AS suite_number, p.number AS project_number, p.name AS project_name
          FROM (${RUN_SUMMARY_SQL} WHERE r.org_id = $1 AND ${where} ORDER BY r.started_at DESC LIMIT ${limit}) x
          JOIN suites s ON s.id = x.suite_id JOIN projects p ON p.id = s.project_id
         WHERE s.deleted_at IS NULL AND p.deleted_at IS NULL
@@ -68,6 +68,12 @@ dashboardRouter.get('/orgs/:orgId/dashboard', async (req, res) => {
     runsWithNames(`r.status <> 'in_progress'`, 10),
   ]);
 
+  const withNames = (r: any) => ({
+    ...mapRunSummary(r),
+    suiteName: r.suite_name,
+    suiteRef: scriptRef(r.project_number, r.suite_number),
+    projectName: r.project_name,
+  });
   const passed = Number(last30.passed);
   const failed = Number(last30.failed);
   const body: Dashboard = {
@@ -81,6 +87,7 @@ dashboardRouter.get('/orgs/:orgId/dashboard', async (req, res) => {
     projects: projects.map(
       (p): DashboardProject => ({
         id: p.id,
+        number: p.number,
         name: p.name,
         description: p.description,
         suiteCount: Number(p.suite_count),
@@ -93,8 +100,8 @@ dashboardRouter.get('/orgs/:orgId/dashboard', async (req, res) => {
         })),
       }),
     ),
-    activeRuns: active.map((r) => ({ ...mapRunSummary(r), suiteName: r.suite_name, projectName: r.project_name })),
-    recentRuns: recent.map((r) => ({ ...mapRunSummary(r), suiteName: r.suite_name, projectName: r.project_name })),
+    activeRuns: active.map(withNames),
+    recentRuns: recent.map(withNames),
   };
   res.json(body);
 });
@@ -126,7 +133,8 @@ dashboardRouter.get('/orgs/:orgId/search', async (req, res) => {
          FROM hits ORDER BY test_case_id, rank DESC
      )
      SELECT b.test_case_id, b.matched_step, t.name AS test_case_name,
-            s.id AS suite_id, s.name AS suite_name, p.id AS project_id, p.name AS project_name
+            s.id AS suite_id, s.name AS suite_name, s.number AS suite_number, p.number AS project_number,
+            p.id AS project_id, p.name AS project_name
        FROM best b
        JOIN test_cases t ON t.id = b.test_case_id AND t.deleted_at IS NULL
        JOIN suites s ON s.id = t.suite_id AND s.deleted_at IS NULL
@@ -140,6 +148,7 @@ dashboardRouter.get('/orgs/:orgId/search', async (req, res) => {
     testCaseName: r.test_case_name,
     suiteId: r.suite_id,
     suiteName: r.suite_name,
+    suiteRef: scriptRef(r.project_number, r.suite_number),
     projectId: r.project_id,
     projectName: r.project_name,
     matchedStep: r.matched_step,

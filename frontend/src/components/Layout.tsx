@@ -205,7 +205,7 @@ function SearchBox() {
                   >
                     <span className="block text-sm font-medium">{h.testCaseName}</span>
                     <span className="block truncate text-xs text-ink-muted">
-                      {h.projectName} / {h.suiteName}
+                      {h.projectName} / {h.suiteRef} {h.suiteName}
                       {h.matchedStep && <>, in step “{h.matchedStep}”</>}
                     </span>
                   </button>

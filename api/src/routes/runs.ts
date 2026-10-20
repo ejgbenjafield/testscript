@@ -8,6 +8,7 @@ import {
   type RunDetail,
   type RunResult,
   type RunTestCase,
+  scriptRef,
 } from '@testscript/shared';
 import { one, query, tx } from '../db';
 import { audit, currentUser, requireResource } from '../authz';
@@ -42,7 +43,7 @@ runsRouter.post('/suites/:suiteId/runs', async (req, res) => {
       db,
     );
     if (input.testCaseIds && cases.length !== new Set(input.testCaseIds).size) {
-      throw badRequest('Some of those test cases are not in this suite');
+      throw badRequest('Some of those test cases are not in this test script');
     }
     const withSteps = cases.filter((c) => c.steps.length > 0);
     if (withSteps.length === 0) {
@@ -83,7 +84,8 @@ runsRouter.get('/suites/:suiteId/runs', async (req, res) => {
 
 async function loadRun(runId: string): Promise<RunDetail> {
   const run = await one(
-    `SELECT x.*, s.name AS suite_name, p.id AS project_id, p.name AS project_name
+    `SELECT x.*, s.name AS suite_name, s.number AS suite_number, p.number AS project_number,
+            p.id AS project_id, p.name AS project_name
        FROM (${RUN_SUMMARY_SQL} WHERE r.id = $1) x
        JOIN suites s ON s.id = x.suite_id JOIN projects p ON p.id = s.project_id`,
     [runId],
@@ -109,6 +111,7 @@ async function loadRun(runId: string): Promise<RunDetail> {
   return {
     ...mapRunSummary(run),
     suiteName: run.suite_name,
+    suiteRef: scriptRef(run.project_number, run.suite_number),
     projectId: run.project_id,
     projectName: run.project_name,
     testCases,

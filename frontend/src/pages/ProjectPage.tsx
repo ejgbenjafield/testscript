@@ -45,7 +45,8 @@ export function ProjectPage() {
       </nav>
       <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold">
+          <h1 className="flex items-baseline gap-3 text-2xl font-semibold">
+            <span className="tabular-nums text-ink-faint">{p.number}</span>
             <InlineEdit ariaLabel="project name" value={p.name} disabled={!canEdit} onSave={(name) => update.mutateAsync({ name })} />
           </h1>
           <div className="mt-1 max-w-2xl text-ink-muted">
@@ -65,7 +66,7 @@ export function ProjectPage() {
               label="Delete project"
               className="btn-danger"
               title={`Delete ${p.name}?`}
-              body="Its suites and test cases will be removed from view. Past runs and their results are kept."
+              body="Its test scripts and test cases will be removed from view. Past runs and their results are kept."
               confirmLabel="Delete project"
               onConfirm={async () => {
                 await api.delete(`/orgs/${org.id}/projects/${p.id}`);
@@ -74,13 +75,13 @@ export function ProjectPage() {
                 navigate(`/${org.slug}/dashboard`);
               }}
             />
-            <button className="btn-primary" onClick={() => setCreating(true)}>New suite</button>
+            <button className="btn-primary" onClick={() => setCreating(true)}>New test script</button>
           </div>
         )}
       </div>
 
       <section className="mt-8">
-        <h2 className="text-lg font-semibold">Suites</h2>
+        <h2 className="text-lg font-semibold">Test scripts</h2>
         {suites.isPending ? (
           <Loading />
         ) : suites.isError ? (
@@ -88,10 +89,10 @@ export function ProjectPage() {
         ) : suites.data.data.length === 0 ? (
           <div className="mt-3">
             <EmptyState
-              title="No suites yet"
-              action={canEdit && <button className="btn-primary" onClick={() => setCreating(true)}>Create a suite</button>}
+              title="No test scripts yet"
+              action={canEdit && <button className="btn-primary" onClick={() => setCreating(true)}>Create a test script</button>}
             >
-              A suite is a set of test cases you run together, such as “Checkout” or “Release smoke test”.
+              A test script is a set of test cases you run together, such as “Checkout” or “Release smoke test”.
             </EmptyState>
           </div>
         ) : (
@@ -100,7 +101,10 @@ export function ProjectPage() {
               <li key={s.id}>
                 <Link to={`/${org.slug}/suites/${s.id}`} className="grid gap-3 px-5 py-4 hover:bg-canvas/60 sm:grid-cols-[1fr_16rem] sm:items-center">
                   <div className="min-w-0">
-                    <p className="font-semibold">{s.name}</p>
+                    <p className="font-semibold">
+                      <span className="mr-2 tabular-nums text-ink-faint">{s.ref}</span>
+                      {s.name}
+                    </p>
                     <p className="mt-0.5 truncate text-sm text-ink-muted">
                       {plural(s.testCaseCount, 'test case')}
                       {s.description && `. ${s.description}`}
@@ -149,11 +153,11 @@ function NewSuiteModal({ projectId, open, onClose }: { projectId: string; open: 
     <Modal
       open={open}
       onClose={onClose}
-      title="New suite"
+      title="New test script"
       footer={
         <>
           <button className="btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" form="new-suite" disabled={create.isPending || !name.trim()}>Create suite</button>
+          <button className="btn-primary" form="new-suite" disabled={create.isPending || !name.trim()}>Create test script</button>
         </>
       }
     >

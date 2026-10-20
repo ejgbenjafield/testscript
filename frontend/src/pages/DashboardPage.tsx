@@ -24,7 +24,7 @@ export function DashboardPage() {
         <div>
           <h1 className="text-2xl font-semibold">{org.name}</h1>
           <p className="mt-1 text-ink-muted">
-            {plural(d.totals.projects, 'project')}, {plural(d.totals.suites, 'suite')}, {plural(d.totals.testCases, 'test case')}
+            {plural(d.totals.projects, 'project')}, {plural(d.totals.suites, 'test script')}, {plural(d.totals.testCases, 'test case')}
           </p>
         </div>
         {canEdit && (
@@ -57,7 +57,7 @@ export function DashboardPage() {
               action={canEdit && <button className="btn-primary" onClick={() => setCreating(true)}>Create your first project</button>}
             >
               {canEdit
-                ? 'A project groups the test suites for one product or app. Start with one, then add suites and test cases inside it.'
+                ? 'A project groups the test scripts for one product or app. Start with one, then add test scripts and test cases inside it.'
                 : 'Projects will appear here once a manager creates one.'}
             </EmptyState>
           </div>
@@ -67,9 +67,12 @@ export function DashboardPage() {
               <li key={p.id}>
                 <Link to={`/${org.slug}/projects/${p.id}`} className="flex items-center gap-6 px-5 py-4 hover:bg-canvas/60">
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold">{p.name}</p>
+                    <p className="font-semibold">
+                      <span className="mr-2 tabular-nums text-ink-faint">{p.number}</span>
+                      {p.name}
+                    </p>
                     <p className="mt-0.5 truncate text-sm text-ink-muted">
-                      {plural(p.suiteCount, 'suite')}, {plural(p.testCaseCount, 'test case')}. Last run {timeAgo(p.lastRunAt)}.
+                      {plural(p.suiteCount, 'test script')}, {plural(p.testCaseCount, 'test case')}. Last run {timeAgo(p.lastRunAt)}.
                     </p>
                   </div>
                   <div className="hidden text-right sm:block">
@@ -106,7 +109,7 @@ function Figure({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function RunList({ runs }: { runs: Array<RunSummary & { suiteName?: string; projectName?: string }> }) {
+export function RunList({ runs }: { runs: Array<RunSummary & { suiteName?: string; suiteRef?: string; projectName?: string }> }) {
   const org = useOrg();
   return (
     <ul className="mt-3 divide-y divide-line rounded-lg border border-line bg-white">
@@ -119,7 +122,7 @@ export function RunList({ runs }: { runs: Array<RunSummary & { suiteName?: strin
                 <RunStatusBadge status={r.status} />
               </p>
               <p className="mt-0.5 truncate text-sm text-ink-muted">
-                {r.projectName && `${r.projectName} / ${r.suiteName}. `}
+                {r.projectName && `${r.projectName} / ${r.suiteRef} ${r.suiteName}. `}
                 Started {timeAgo(r.startedAt)}
                 {r.startedBy && ` by ${r.startedBy.name || r.startedBy.email}`}
               </p>

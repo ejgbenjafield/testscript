@@ -15,6 +15,7 @@ import {
   type Step,
   type Suite,
   type TestCase,
+  scriptRef,
 } from '@testscript/shared';
 import { Db, one, query, tx } from '../db';
 import { audit, changed, currentUser, requireOrg, requireResource } from '../authz';
@@ -30,6 +31,7 @@ function mapProject(r: any): Project {
   return {
     id: r.id,
     orgId: r.org_id,
+    number: r.number,
     name: r.name,
     description: r.description,
     suiteCount: Number(r.suite_count ?? 0),
@@ -45,6 +47,9 @@ function mapSuite(r: any): Suite {
     id: r.id,
     projectId: r.project_id,
     projectName: r.project_name,
+    number: r.number,
+    projectNumber: r.project_number,
+    ref: scriptRef(r.project_number, r.number),
     name: r.name,
     description: r.description,
     testCaseCount: Number(r.test_case_count ?? 0),
@@ -91,7 +96,7 @@ const PROJECT_SQL = `
     FROM projects p`;
 
 const SUITE_SQL = `
-  SELECT s.*, p.name AS project_name,
+  SELECT s.*, p.name AS project_name, p.number AS project_number,
          (SELECT count(*) FROM test_cases t WHERE t.suite_id = s.id AND t.deleted_at IS NULL) AS test_case_count,
          (SELECT row_to_json(lr) FROM (${RUN_SUMMARY_SQL} WHERE r.suite_id = s.id ORDER BY r.started_at DESC LIMIT 1) lr) AS last_run
     FROM suites s JOIN projects p ON p.id = s.project_id`;
@@ -142,8 +147,8 @@ contentRouter.get('/orgs/:orgId/projects', async (req, res) => {
   const rows = await query(
     `${PROJECT_SQL}
       WHERE p.org_id = $1 AND p.deleted_at IS NULL
-        AND ($2::uuid IS NULL OR (p.created_at, p.id) < (SELECT created_at, id FROM projects WHERE id = $2))
-      ORDER BY p.created_at DESC, p.id DESC LIMIT $3`,
+        AND ($2::uuid IS NULL OR p.number > (SELECT number FROM projects WHERE id = $2))
+      ORDER BY p.number LIMIT $3`,
     [org.id, after ?? null, limit + 1],
   );
   res.json(toPage(rows, limit, mapProject));
@@ -154,8 +159,11 @@ contentRouter.post('/orgs/:orgId/projects', async (req, res) => {
   const org = await requireOrg(req, req.params.orgId, 'manager');
   const input = parse(createProjectSchema, req.body);
   const project = await tx(async (db) => {
+    // Lock the organisation so two projects created at once can't get the same number.
+    await db.query('SELECT 1 FROM organisations WHERE id = $1 FOR UPDATE', [org.id]);
     const row = await one(
-      `INSERT INTO projects (org_id, name, description, created_by) VALUES ($1, $2, $3, $4) RETURNING id`,
+      `INSERT INTO projects (org_id, number, name, description, created_by)
+       VALUES ($1, (SELECT COALESCE(max(number), 0) + 1 FROM projects WHERE org_id = $1), $2, $3, $4) RETURNING id`,
       [org.id, input.name, input.description ?? null, user.id],
       db,
     );
@@ -209,8 +217,8 @@ contentRouter.get('/projects/:projectId/suites', async (req, res) => {
   const rows = await query(
     `${SUITE_SQL}
       WHERE s.project_id = $1 AND s.deleted_at IS NULL
-        AND ($2::uuid IS NULL OR (s.created_at, s.id) > (SELECT created_at, id FROM suites WHERE id = $2))
-      ORDER BY s.created_at, s.id LIMIT $3`,
+        AND ($2::uuid IS NULL OR s.number > (SELECT number FROM suites WHERE id = $2))
+      ORDER BY s.number LIMIT $3`,
     [p.id, after ?? null, limit + 1],
   );
   res.json(toPage(rows, limit, mapSuite));
@@ -221,8 +229,11 @@ contentRouter.post('/projects/:projectId/suites', async (req, res) => {
   const p = await requireResource(req, 'project', req.params.projectId, 'manager');
   const input = parse(createSuiteSchema, req.body);
   const suite = await tx(async (db) => {
+    // Lock the project so two test scripts created at once can't get the same number.
+    await db.query('SELECT 1 FROM projects WHERE id = $1 FOR UPDATE', [p.id]);
     const row = await one(
-      `INSERT INTO suites (org_id, project_id, name, description, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      `INSERT INTO suites (org_id, project_id, number, name, description, created_by)
+       VALUES ($1, $2, (SELECT COALESCE(max(number), 0) + 1 FROM suites WHERE project_id = $2), $3, $4, $5) RETURNING id`,
       [p.org_id, p.id, input.name, input.description ?? null, user.id],
       db,
     );
@@ -327,7 +338,7 @@ contentRouter.post('/suites/:suiteId/test-cases/reorder', async (req, res) => {
       [s.id],
       db,
     );
-    assertSameSet(current.map((r) => r.id), ids, 'test cases in this suite');
+    assertSameSet(current.map((r) => r.id), ids, 'test cases in this test script');
     await applyOrder(db, 'test_cases', ids);
     await audit(req, { orgId: s.org_id, action: 'test_case.reordered', entityType: 'suite', entityId: s.id, diff: { ids } }, db);
   });

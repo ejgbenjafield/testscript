@@ -108,6 +108,8 @@ The API suite (`api/test/api.test.ts`) covers sign-in, organisations, invitation
 
 ## Design decisions and changes from the spec
 
+- **Test scripts and reference numbers.** What the spec calls a *suite* is shown as a **test script** everywhere on the website (the code and API still say `suite`). Projects are numbered 1, 2, 3 within an organisation and test scripts 1.1, 1.2 within their project. Numbers are assigned automatically and never reused, so a reference always points at the same test script.
+- **Running part of a test script.** A run can include every test case, or just the ones you tick (or a single one, from its **Run** button).
 - **Replit instead of Google Cloud.** Replit PostgreSQL replaces Cloud SQL, Replit Object Storage (backed by Google Cloud Storage) replaces the GCS bucket, Replit Secrets replaces Secret Manager, and Replit Autoscale replaces Cloud Run. One server serves the website and the API, so there's no CORS to configure.
 - **Tenant isolation.** `org_id` is on every content table, and composite foreign keys (`(suite_id, org_id) → suites(id, org_id)`) make cross-organisation references impossible in the database itself. Every route finds the organisation that owns what it touches and checks the caller's role there (`api/src/authz.ts`). Non-members get **404**, not 403, so other tenants' ids can't be probed.
 - **Roles.** The five spec roles are enforced at organisation level (viewer < tester < manager < admin < owner). Team-scoped roles arrive with Phase 2; the `teams` and `team_members` tables and `projects.team_id` already exist. An organisation always keeps at least one owner.

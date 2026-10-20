@@ -193,6 +193,7 @@ describe('invitations and roles', () => {
     it('creates and edits a project', async () => {
       const res = await owner.post(`/v1/orgs/${orgId}/projects`, { name: 'Web app', description: 'Main site' });
       expect(res.status).toBe(201);
+      expect(res.body.number).toBe(1);
       projectId = res.body.id;
       const edited = await owner.patch(`/v1/orgs/${orgId}/projects/${projectId}`, { name: 'Web app v2' });
       expect(edited.body).toMatchObject({ name: 'Web app v2', description: 'Main site' });
@@ -207,7 +208,15 @@ describe('invitations and roles', () => {
     it('creates suites, test cases and steps', async () => {
       const suite = await owner.post(`/v1/projects/${projectId}/suites`, { name: 'Checkout' });
       expect(suite.status).toBe(201);
+      expect(suite.body.ref).toBe('1.1');
       suiteId = suite.body.id;
+      const second = await owner.post(`/v1/projects/${projectId}/suites`, { name: 'Search' });
+      expect(second.body.ref).toBe('1.2');
+      await owner.delete(`/v1/suites/${second.body.id}`);
+      // Numbers aren't reused after a delete.
+      const third = await owner.post(`/v1/projects/${projectId}/suites`, { name: 'Basket' });
+      expect(third.body.ref).toBe('1.3');
+      await owner.delete(`/v1/suites/${third.body.id}`);
 
       for (const name of ['Pay by card', 'Pay by PayPal', 'Empty basket']) {
         const tc = await owner.post(`/v1/suites/${suiteId}/test-cases`, {
@@ -290,6 +299,7 @@ describe('invitations and roles', () => {
       expect(run.status).toBe(201);
       runId = run.body.id;
       expect(run.body.testCases).toHaveLength(3);
+      expect(run.body.suiteRef).toBe('1.1');
       expect(run.body.stats).toMatchObject({ total: 7, untested: 7, passRate: null });
 
       const firstCase = run.body.testCases.find((c: any) => c.testCaseId === caseIds[0]);
@@ -345,7 +355,17 @@ describe('invitations and roles', () => {
       expect(dash.status).toBe(200);
       expect(dash.body.totals).toMatchObject({ projects: 1, suites: 1, testCases: 3, runsLast30Days: 1 });
       expect(dash.body.projects[0].trend).toHaveLength(1);
-      expect(dash.body.recentRuns[0]).toMatchObject({ suiteName: 'Checkout', projectName: 'Web app v2' });
+      expect(dash.body.recentRuns[0]).toMatchObject({ suiteName: 'Checkout', suiteRef: '1.1', projectName: 'Web app v2' });
+    });
+
+    it('runs just the chosen test cases', async () => {
+      const one = await tester.post(`/v1/suites/${suiteId}/runs`, { testCaseIds: [caseIds[1]] });
+      expect(one.status).toBe(201);
+      expect(one.body.testCases.map((c: any) => c.testCaseId)).toEqual([caseIds[1]]);
+      expect(one.body.stats.total).toBe(2);
+      const foreign = await tester.post(`/v1/suites/${suiteId}/runs`, { testCaseIds: ['00000000-0000-4000-8000-000000000000'] });
+      expect(foreign.status).toBe(400);
+      await tester.patch(`/v1/runs/${one.body.id}`, { status: 'abandoned' });
     });
 
     it('soft-deletes suites without losing runs', async () => {
