@@ -1,16 +1,16 @@
-System,Import via,Import Definition,Test Description,Expected Results
-SFTP,SFTP,ICH_GA_Charges_SFTP,"Verify that the number of data rows picked up from the SFTP file equals the rows BlackLine shows as imported.
+﻿Test Case ID,System,Import via,Import Definition,Test Description ,Expected Results
+REPORT1.0,SFTP,SFTP,ICH_GA_Charges_SFTP,"Verify that the number of data rows picked up from the SFTP file equals the rows BlackLine shows as imported.
 
 1. Download the processed source file (pre-encryption sample copy). 
 2. Count data rows (exclude header/footer). 
 3. In BlackLine, open System › Jobs › Job Status → Details to view the “Records Imported” figure. 
 4. Capture screenshots.",“Records Imported” matches source row count; job displays Completed with no errors .
-SFTP,SFTP,ICH_GA_Charges_SFTP,"Confirm that the aggregate monetary amount in BlackLine equals the total in the SFTP file.
+REPORT1.1,SFTP,SFTP,ICH_GA_Charges_SFTP,"Confirm that the aggregate monetary amount in BlackLine equals the total in the SFTP file.
 
 1. Sum the value column(s) in the source file. 
 2. Export a quick query or run a report on the imported table in BlackLine. 
 3. Compare totals (Excel or SQL).",Aggregate amounts agree; any variance = 0.00. BlackLine implementation guide recommends post-import data validation of this type .
-SFTP,SFTP,ICH_GA_Charges_SFTP,"Ensure every required field defined in the import definition populated correctly.
+REPORT1.2,SFTP,SFTP,ICH_GA_Charges_SFTP,"Ensure every required field defined in the import definition populated correctly.
 
 1. Open the import definition and note mandatory columns. 
 2. Run a simple IS NULL (or filter) query on the imported data source. 

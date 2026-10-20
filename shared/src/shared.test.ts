@@ -102,4 +102,17 @@ describe('CSV import', () => {
       { ref: null, action: 'Do b', expectedResult: 'Works' },
     ]);
   });
+  it('groups SIT rows by Test Case ID', async () => {
+    const { parseImport } = await import('./csv');
+    const r = parseImport(
+      'Test Case ID,System,Import via,Import Definition,Test Description ,Expected Results\nR1.1,SFTP,SFTP,Def,"Second.\n1. b",Ok2\nR1.0,SFTP,SFTP,Def,"First.\n1. a",Ok1\n',
+    );
+    expect(r.format).toBe('sit');
+    expect(r.cases).toHaveLength(1);
+    expect(r.cases[0]).toMatchObject({ ref: 'R1', name: 'Def' });
+    expect(r.cases[0].steps.map((st) => [st.ref, st.action, st.expectedResult])).toEqual([
+      ['R1.0', 'First.\n1. a', 'Ok1'],
+      ['R1.1', 'Second.\n1. b', 'Ok2'],
+    ]);
+  });
 });

@@ -8,9 +8,12 @@
  * REPORT1.1 and REPORT1.2 are steps 1, 2 and 3 of test case REPORT1.
  *
  * SIT template:
- *   System, Import via, Import Definition, Test Description, Expected Results
- * Each row is one test case. Numbered lines in Test Description ("1. …") become
- * steps, and Expected Results goes on the last step. Columns for results
+ *   Test Case ID, System, Import via, Import Definition, Test Description, Expected Results
+ * Like UAT, each row is one step, grouped into test cases by ID. The step keeps
+ * the whole Test Description (numbered instructions included) and its Expected
+ * Results; the test case is named after the Import Definition. Older SIT files
+ * without a Test Case ID still work: each row becomes a test case and its
+ * numbered lines become steps. Columns for results
  * (Actual Results, Pass/Fail, Test Performer, Comments) are ignored, because
  * results are recorded in TestScript during a run.
  */
@@ -212,6 +215,7 @@ export function parseImport(text: string): ParsedImport {
 /** SIT rows: one test case each, with numbered lines in Test Description as steps. */
 function parseSit(rows: string[][], headerIndex: number): ParsedImport {
   const headers = rows[headerIndex].map(norm);
+  if (headers.includes('test case id')) return parseSitById(rows, headerIndex);
   const at = (name: string) => headers.indexOf(name);
   const c = {
     system: at('system'),
@@ -267,4 +271,71 @@ function firstSentence(text: string): string {
   const m = /^(.+?[.!?])(\s|$)/.exec(text);
   const sentence = (m ? m[1] : text).trim();
   return sentence.length > 200 ? `${sentence.slice(0, 197)}...` : sentence;
+}
+
+/** SIT rows with a Test Case ID: each row is a step, grouped like UAT. */
+function parseSitById(rows: string[][], headerIndex: number): ParsedImport {
+  const headers = rows[headerIndex].map(norm);
+  const at = (name: string) => headers.indexOf(name);
+  const c = {
+    id: at('test case id'),
+    system: at('system'),
+    via: at('import via'),
+    definition: at('import definition'),
+    test: at('test description'),
+    expected: at('expected results') >= 0 ? at('expected results') : at('expected result'),
+  };
+  const get = (row: string[], i: number) => (i >= 0 ? (row[i] ?? '').trim() : '');
+  const warnings: string[] = [];
+  const groups = new Map<string, { ref: string; name: string; details: string; steps: Array<ImportedStep & { order: number; row: number }> }>();
+
+  rows.slice(headerIndex + 1).forEach((row, i) => {
+    const line = headerIndex + i + 2;
+    if (row.every((cell) => cell.trim() === '')) return;
+    const id = get(row, c.id);
+    if (!id) {
+      warnings.push(`Row ${line} has no Test Case ID, so it was skipped.`);
+      return;
+    }
+    const text = get(row, c.test).replace(/[ \t]+$/gm, '');
+    if (!text) {
+      warnings.push(`Row ${line} (${id}) has no Test Description, so it was skipped.`);
+      return;
+    }
+    const { caseRef, step } = splitRef(id);
+    const key = caseRef.toLowerCase();
+    let group = groups.get(key);
+    if (!group) {
+      const details = [
+        get(row, c.system) && `System: ${get(row, c.system)}`,
+        get(row, c.via) && `Import via: ${get(row, c.via)}`,
+        get(row, c.definition) && `Import definition: ${get(row, c.definition)}`,
+      ].filter(Boolean).join('\n');
+      group = { ref: caseRef, name: get(row, c.definition) || get(row, c.system) || firstSentence(text), details, steps: [] };
+      groups.set(key, group);
+    }
+    if (group.steps.some((st) => st.ref?.toLowerCase() === id.toLowerCase())) {
+      warnings.push(`Row ${line}: ${id} appears more than once; only the first was used.`);
+      return;
+    }
+    group.steps.push({ ref: id, action: text, expectedResult: get(row, c.expected) || null, order: step ?? Number.MAX_SAFE_INTEGER, row: line });
+  });
+
+  const cases: ImportedCase[] = [];
+  for (const g of groups.values()) {
+    if (cases.length >= MAX_IMPORT_CASES) {
+      warnings.push(`Only the first ${MAX_IMPORT_CASES} test cases were read. Split the file to upload the rest.`);
+      break;
+    }
+    const steps = [...g.steps].sort((a, b) => a.order - b.order || a.row - b.row);
+    if (steps.length > MAX_IMPORT_STEPS) warnings.push(`${g.ref} has more than ${MAX_IMPORT_STEPS} steps; the rest were left out.`);
+    cases.push({
+      ref: g.ref,
+      name: g.name.slice(0, 200),
+      description: g.details || null,
+      steps: steps.slice(0, MAX_IMPORT_STEPS).map(({ ref, action, expectedResult }) => ({ ref, action, expectedResult })),
+    });
+  }
+  if (cases.length === 0 && warnings.length === 0) warnings.push('The file has headings but no rows to import.');
+  return { format: 'sit', cases, warnings, error: null };
 }

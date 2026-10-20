@@ -664,9 +664,8 @@ function ImportModal({ suite, onClose }: { suite: Suite; onClose: () => void }) 
       {!result ? (
         <div className="space-y-4">
           <p className="text-sm text-ink-muted">
-            Use one of the templates and keep its first row as it is. In UAT and Regression files each row is a step, grouped into test
-            cases by ID: REPORT1.0 and REPORT1.1 are steps 1 and 2 of test case REPORT1. In SIT files each row is a test case, and its
-            numbered lines become steps. Results columns are ignored, because results are recorded here during a run.
+            Use one of the templates and keep its first row as it is. Each row is a step, grouped into test cases by ID: REPORT1.0 and
+            REPORT1.1 are steps 1 and 2 of test case REPORT1. Results columns are ignored, because results are recorded here during a run.
           </p>
           <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             <span className="text-ink-muted">Templates:</span>
